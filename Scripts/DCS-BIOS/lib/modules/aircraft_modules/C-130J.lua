@@ -1285,17 +1285,28 @@ C_130J:defineToggleSwitch("PARKING_BRAKE", devices.MECH_INTERFACE, 3037, 29,  ME
 
 -- Exterior Lighting
 C_130J:defineToggleSwitch(       "EXT_MASTER",     devices.LIGHTING_PANELS, 3008, 421, EXT_LIGHTING, "Exterior Lighting Master (COVERT/NORM)")
-C_130J:defineMultipositionSwitch("EXT_NAV",        devices.LIGHTING_PANELS, 3009, 422, 3, 0.5, EXT_LIGHTING, "Nav Lights (FLASH/OFF/STEADY)")
+-- NOTE: nav-mode + landing-light-motor switches are CENTERED 3-position switches
+-- (clickable arg range {-1,1}: down=-1, mid=0, up=+1). defineMultipositionSwitch
+-- with step 0.5 only emits 0.0/0.5/1.0 = mid..up and can NEVER reach the down
+-- (-1) detent. define3PosTumb drives performClickableAction(cmd, -1/0/+1), so
+-- position 0=DOWN, 1=MID, 2=UP correctly reach both extremes.
+C_130J:define3PosTumb("EXT_NAV", devices.LIGHTING_PANELS, 3009, 422, EXT_LIGHTING, "Nav Lights (0=STEADY/down, 1=OFF/mid, 2=FLASH/up)", { positions = { "STEADY", "OFF", "FLASH" } })
 C_130J:defineToggleSwitch(       "EXT_DIM",        devices.LIGHTING_PANELS, 3010, 423, EXT_LIGHTING, "Nav Lights Brightness (DIM/BRIGHT)")
 C_130J:defineMultipositionSwitch("EXT_STROBE_TOP", devices.LIGHTING_PANELS, 3012, 418, 3, 0.5, EXT_LIGHTING, "Top Strobe (RED/OFF/WHT)")
 C_130J:defineMultipositionSwitch("EXT_STROBE_BTM", devices.LIGHTING_PANELS, 3013, 419, 3, 0.5, EXT_LIGHTING, "Bottom Strobe (RED/OFF/WHT)")
 C_130J:defineToggleSwitch(       "EXT_LEDGE",      devices.LIGHTING_PANELS, 3015, 417, EXT_LIGHTING, "Leading Edge Lights")
 C_130J:defineToggleSwitch(       "LDG_LIGHT_L",    devices.LIGHTING_PANELS, 3002, 32,  EXT_LIGHTING, "Left Landing Light")
 C_130J:defineToggleSwitch(       "LDG_LIGHT_R",    devices.LIGHTING_PANELS, 3001, 33,  EXT_LIGHTING, "Right Landing Light")
-C_130J:defineMultipositionSwitch("LDG_MOTOR_L",    devices.LIGHTING_PANELS, 3004, 30,  3, 0.5, EXT_LIGHTING, "Left Landing Light Motor (RETRACT/HOLD/EXTEND)")
-C_130J:defineMultipositionSwitch("LDG_MOTOR_R",    devices.LIGHTING_PANELS, 3003, 31,  3, 0.5, EXT_LIGHTING, "Right Landing Light Motor (RETRACT/HOLD/EXTEND)")
+C_130J:define3PosTumb("LDG_MOTOR_L", devices.LIGHTING_PANELS, 3004, 30, EXT_LIGHTING, "Left Landing Light Motor (0=RETRACT/down, 1=HOLD/mid, 2=EXTEND/up)", { positions = { "RETRACT", "HOLD", "EXTEND" } })
+C_130J:define3PosTumb("LDG_MOTOR_R", devices.LIGHTING_PANELS, 3003, 31, EXT_LIGHTING, "Right Landing Light Motor (0=RETRACT/down, 1=HOLD/mid, 2=EXTEND/up)", { positions = { "RETRACT", "HOLD", "EXTEND" } })
 C_130J:defineToggleSwitch(       "TAXI_LIGHT",     devices.LIGHTING_PANELS, 3006, 34,  EXT_LIGHTING, "Taxi Lights")
 C_130J:defineToggleSwitch(       "WINGTIP_TAXI",   devices.LIGHTING_PANELS, 3007, 35,  EXT_LIGHTING, "Wingtip Taxi Lights")
+C_130J:definePotentiometer(      "EXT_FORM_BRT",   devices.LIGHTING_PANELS, 3016, 424, { 0, 1 }, EXT_LIGHTING, "Covert/Formation Light Brightness Control")
+
+-- Pilot Intercommunications System Monitor Panel
+local PLT_ICS_MONITOR = "Pilot Intercommunications System Monitor Panel"
+C_130J:definePotentiometer("PLT_ICS_RWR_VOLUME", devices.VOLUME_MANAGER, 3066, 446, { 0, 1 }, PLT_ICS_MONITOR, "Pilot MonRWR Knob")
+C_130J:defineToggleSwitch("PLT_ICS_RWR_BUTTON", devices.VOLUME_MANAGER, 3076, 445, PLT_ICS_MONITOR, "Pilot MonRWR Pull to Monitor")
 
 -- Air Conditioning
 C_130J:definePushButton("AC_FLT_PWR",   devices.PLANE_ATM, 3001, 352, AC_PANEL, "Flight Station A/C Power")
@@ -1344,6 +1355,12 @@ C_130J:definePushButton("PLT_MASTER_WARNING",  devices.PILOT_REF_MODE_PANEL,   3
 C_130J:definePushButton("PLT_MASTER_CAUTION",  devices.PILOT_REF_MODE_PANEL,   3010, 81, REF_PANEL, "Pilot Master Caution - Push to Reset")
 C_130J:definePushButton("CPLT_MASTER_WARNING", devices.COPILOT_REF_MODE_PANEL, 3009, 92, REF_PANEL, "Copilot Master Warning - Push to Reset")
 C_130J:definePushButton("CPLT_MASTER_CAUTION", devices.COPILOT_REF_MODE_PANEL, 3010, 93, REF_PANEL, "Copilot Master Caution - Push to Reset")
+
+-- Pilot Baro Set knob (Reference Mode Panel). Sets the altimeter baro on
+-- HDD1/HDD2 + pilot HUD. baro_set (3007) = rotate; baro_ISA_set (3008) =
+-- push to set 29.92 (STD). Rotate is a relative encoder (send +/- increments).
+C_130J:defineRotary("PLT_BARO_SET", devices.PILOT_REF_MODE_PANEL, 3007, 107, REF_PANEL, "Pilot Baro Set Knob - Rotate (baro adjust)")
+C_130J:definePushButton("PLT_BARO_STD", devices.PILOT_REF_MODE_PANEL, 3008, 558, REF_PANEL, "Pilot Baro Set Knob - Push to Set 29.92 (STD)")
 
 -- =====================================================================
 -- Overhead LCD State Outputs (for monitoring and conditional waits)
@@ -1404,6 +1421,163 @@ end, 3, OVERHEAD_DISPLAYS, "Cargo Compartment Air Temperature")
 C_130J:defineString("HYD_AUX_PRESSURE", function()
 	return safe_numeric_lcd(43, 4)
 end, 4, OVERHEAD_DISPLAYS, "Auxiliary Hydraulic Pressure (PSI)")
+
+-- Ambient atmospheric pressure at the aircraft (QFE when on the ground at the
+-- field), read from the sim atmosphere via LoGetBasicAtmospherePressure().
+-- pcall-guarded: if the call is unavailable or errors in this export context,
+-- it returns "0" and never breaks module export. STAGE 1: raw value at 2 dp so
+-- we can confirm the units (mmHg vs hPa vs inHg) from a live mission, then the
+-- format/conversion gets finalised. Temperature exposed too (deg C).
+C_130J:defineString("QFE_PRESSURE", function()
+	local ok, atmo = pcall(LoGetBasicAtmospherePressure)
+	if ok and type(atmo) == "table" and atmo.pressure ~= nil then
+		return string.format("%.2f", atmo.pressure)
+	end
+	return "0"
+end, 10, OVERHEAD_DISPLAYS, "Ambient/QFE pressure at aircraft (raw units TBD)")
+
+C_130J:defineString("QFE_TEMPERATURE", function()
+	local ok, atmo = pcall(LoGetBasicAtmospherePressure)
+	if ok and type(atmo) == "table" and atmo.temperature ~= nil then
+		return string.format("%.1f", atmo.temperature)
+	end
+	return "0"
+end, 8, OVERHEAD_DISPLAYS, "Ambient temperature at aircraft (deg C)")
+
+-- Aircraft altitude above sea level (metres). On the ramp this is field
+-- elevation, needed to correct QFE (pressure at the jet) to QNH (sea-level
+-- pressure = the briefing altimeter setting). pcall-guarded like the others.
+C_130J:defineString("QFE_FIELD_ELEV", function()
+	local ok, alt = pcall(LoGetAltitudeAboveSeaLevel)
+	if ok and type(alt) == "number" then
+		return string.format("%.1f", alt)
+	end
+	return "0"
+end, 10, OVERHEAD_DISPLAYS, "Altitude ASL / field elevation on ramp (m)")
+
+-- =====================================================================
+-- STAGE 1 CARP LOAD PROBE (read-only, temporary)
+-- ---------------------------------------------------------------------
+-- Dumps the pilot CNI MU display as ordinal "index=value" pairs so we can
+-- locate the CARP INIT 2/5 load fields live in-game:
+--     LOAD class (PER/CDS/HE/BDL), CHUTE/# (e.g. G-12D/1),
+--     ELEM WT/QTY (e.g. 882LB/4), DROP PAYLD (e.g. 3527LB)
+-- The pilot CNI is indicator id 8 (registration order in the mod's
+-- device_init.lua: HddIndicator x4, HddBake x4, then CniIndicator pilot).
+-- Cross-checked against the known overhead_dc = 23 offset already in this file.
+--
+-- We read whatever the CNI currently shows, so server-custom cargo weights are
+-- captured automatically -- vanilla weights are just the default case.
+--
+-- parse_indication() returns an ordered array (data[1] is empty; data[2..] are
+-- element texts in render order, UUID-named so only the ordinal is usable).
+-- Once the field ordinals are known from a live dump, these two wide probes get
+-- replaced by four narrow per-field reads and this block goes away.
+-- pcall-guarded: returns "" if the indication is unavailable, never breaks export.
+-- =====================================================================
+local PLT_CNI_INDICATION = 8
+local CARP_PROBE = "CARP Probe"
+
+--- Dump a slice of an indicator's elements as "i=val;" pairs (trimmed, non-empty).
+--- @param indication_id integer
+--- @param lo integer first ordinal to include
+--- @param hi integer last ordinal to include
+--- @param max_len integer hard cap on returned length
+--- @return string
+local function dump_indication_range(indication_id, lo, hi, max_len)
+	local ok, data = pcall(function() return Module.parse_indication(indication_id) end)
+	if not ok or type(data) ~= "table" then
+		return ""
+	end
+	local out = ""
+	for i = lo, hi do
+		local v = data[i]
+		if type(v) == "string" then
+			v = v:gsub("^%s+", ""):gsub("%s+$", "")
+			if v ~= "" then
+				local chunk = i .. "=" .. v .. ";"
+				if #out + #chunk > max_len then
+					break
+				end
+				out = out .. chunk
+			end
+		end
+	end
+	return out
+end
+
+C_130J:defineString("CARP_PROBE_A", function()
+	return dump_indication_range(PLT_CNI_INDICATION, 1, 24, 150)
+end, 150, CARP_PROBE, "STAGE1: pilot CNI ordinal dump idx=val (elems 1-24)")
+
+C_130J:defineString("CARP_PROBE_B", function()
+	return dump_indication_range(PLT_CNI_INDICATION, 25, 55, 150)
+end, 150, CARP_PROBE, "STAGE1: pilot CNI ordinal dump idx=val (elems 25-55)")
+
+-- Compact inbound-leg-course map from the ACT LEGS page, so the CARP run-in
+-- course can be read for ANY waypoint without the 150-char probe truncation.
+-- On ACT LEGS each waypoint renders as [course^, dist, time, *LL0N, ...], so
+-- the inbound leg course is the element 3 before the "*LL0N" name. Output is
+-- "LL01=008;LL02=012;LL03=027;" (only while the ACT LEGS page is displayed).
+C_130J:defineString("CARP_LEGS_CRS", function()
+	local ok, data = pcall(function() return Module.parse_indication(PLT_CNI_INDICATION) end)
+	if not ok or type(data) ~= "table" then
+		return ""
+	end
+	local out = ""
+	for i = 1, 60 do
+		local v = data[i]
+		if type(v) == "string" then
+			local vt = v:gsub("^%s+", ""):gsub("%s+$", "")
+			local wp = vt:match("^%*LL0(%d)$")
+			if wp then
+				local course = data[i - 3]
+				if type(course) == "string" then
+					local deg = course:match("(%d+)")
+					if deg then
+						out = out .. "LL0" .. wp .. "=" .. deg .. ";"
+					end
+				end
+			end
+		end
+	end
+	return out
+end, 120, CARP_PROBE, "ACT LEGS inbound leg course per waypoint (LL0N=deg;)")
+
+-- Waypoint ELEVATION per waypoint from the ACT LEGS page, for CARP INIT 4/5
+-- PI ELEV / DZ ELEV. On ACT LEGS each waypoint block renders as
+-- [course^, distNM, "----/NNNNNA", *LL0N] -- the right-hand "----/NNNNNA" field
+-- carries the waypoint elevation (digits before the trailing "A" = feet ASL,
+-- e.g. "----/00568A" -> 568). This is the SAME page the run-in course is read
+-- from and it shows every waypoint at once, so one ACT LEGS snapshot yields both.
+-- Output: compact "LL01=1;LL02=568;LL03=1552;" (only while ACT LEGS is displayed).
+C_130J:defineString("CARP_LEGS_ELEV", function()
+	local ok, data = pcall(function() return Module.parse_indication(PLT_CNI_INDICATION) end)
+	if not ok or type(data) ~= "table" then
+		return ""
+	end
+	local out = ""
+	local pending = nil   -- most recent elevation token seen before an *LL0N
+	for i = 1, 60 do
+		local v = data[i]
+		if type(v) == "string" then
+			local vt = v:gsub("^%s+", ""):gsub("%s+$", "")
+			-- Elevation field: digits immediately before a trailing "A"
+			-- (ASL). Course ends "^", distance ends "NM", so only the
+			-- elevation column matches.
+			local e = vt:match("(%d+)A$")
+			if e then
+				pending = e
+			end
+			local wp = vt:match("^%*LL0(%d)$")
+			if wp and pending then
+				out = out .. "LL0" .. wp .. "=" .. tostring(tonumber(pending)) .. ";"
+				pending = nil
+			end
+		end
+	end
+	return out
+end, 120, CARP_PROBE, "ACT LEGS waypoint ELEV per waypoint (LL0N=ft;)")
 
 -- =====================================================================
 -- END MERGED PATCH
