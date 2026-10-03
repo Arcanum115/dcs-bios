@@ -250,6 +250,67 @@ function C_130J:defineOilCoolerFlapsSwitch(identifier, device_id, command_fixed,
 	return control
 end
 
+--- Adds a multi-position engine start/stop switch for the APU and engine start switches.
+--- @param identifier string the unique identifier for the control
+--- @param device_id integer the dcs device id
+--- @param command integer the dcs command
+--- @param arg_number integer the dcs argument number
+--- @param step number the amount to increase or decrease dcs data by with each step
+--- @param limits number[] a length-2 array with the lower and upper bounds of the data as used in dcs
+--- @param positions number the number of positions the switch has
+--- @param category string the category in which the control should appear
+--- @param description string additional information about the control
+--- @param attributes SwitchAttributes? additional control attributes
+function C_130J:defineEngineStartSwitch(identifier, device_id, command, arg_number, step, limits, positions, category, description, attributes)
+	local min_output = 0
+	local max_output = positions - 1
+	local alloc = self:allocateInt(max_output, identifier)
+
+	self:addExportHook(function(dev0)
+		local val = dev0:get_argument_value(arg_number)
+		local v = Module.round(Module.valueConvert(val, limits, { min_output, max_output }))
+		alloc:setValue(v)
+	end)
+
+	local control = Control:new(category, ControlType.three_pos_two_command_switch_open_close, identifier, description, {
+		FixedStepInput:new("switch to previous or next state"),
+		SetStateInput:new(max_output, "set the switch position"),
+	}, {
+		IntegerOutput:new(alloc, Suffix.none, string.format("switch position")),
+	}, nil, ControlAttributeDocumentation.from_switch_attributes(attributes))
+
+	self:addControl(control)
+
+	self:addInputProcessor(identifier, function(toState)
+		local dev = GetDevice(device_id)
+		if dev == nil then
+			return
+		end
+
+		local current_value = Module.round(Module.valueConvert(GetDevice(0):get_argument_value(arg_number), limits, { min_output, max_output }))
+
+		local to_state_num
+
+		if toState == "INC" then
+			to_state_num = Module.cap(current_value + 1, min_output, max_output)
+		elseif toState == "DEC" then
+			to_state_num = Module.cap(current_value - 1, min_output, max_output)
+		else
+			to_state_num = tonumber(toState)
+		end
+
+		if to_state_num ~= nil then
+			local diff = to_state_num - current_value
+			local s = diff < 0 and -step or step
+			for _ = 1, math.abs(diff) do
+				dev:performClickableAction(command, s)
+			end
+		end
+	end)
+
+	return control
+end
+
 --- Returns the string value of an lcd line
 --- @param indication_id integer the id of the dcs indication
 --- @param elements integer[] the length of each element
@@ -285,64 +346,436 @@ end
 -- Pilot Side Console
 
 -- Pilot Oxygen Regulator
+local PLT_OXYGEN_REGULATOR = "PLT Oxygen Regulator"
+
+C_130J:defineToggleSwitchManualRange("PLT_OXYGEN_DILUTER_LEVER", devices.PLANE_ATM, 3029, 508, { -2, 2 }, PLT_OXYGEN_REGULATOR, "Pilot Oxygen Diluter Lever") -- -2 to 2 for the range is correct for this specific switch
+C_130J:defineToggleSwitchManualRange("PLT_OXYGEN_SUPPLY_LEVER", devices.PLANE_ATM, 3031, 509, { -2, 2 }, PLT_OXYGEN_REGULATOR, "Pilot Oxygen Supply Lever") -- -2 to 2 for the range is correct for this specific switch
+C_130J:define3PosTumb("PLT_OXYGEN_EMERGENCY_LEVER", devices.PLANE_ATM, 3030, 507, PLT_OXYGEN_REGULATOR, "Pilot Oxygen Emergency Lever", { positions = { "TEST MASK", "NORMAL", "EMERGENCY" } })
+C_130J:defineFloat("PLT_OXYGEN_PRESSURE", 511, { -1, 1 }, PLT_OXYGEN_REGULATOR, "Pilot Oxygen Pressure")
 
 -- Pilot Intercommunications System Monitor Panel
+local PLT_ICS_MONITOR_PANEL = "Pilot Intercommunications System Monitor Panel"
+
+C_130J:definePotentiometer("PLT_ICS_MON_VOR_1_VOLUME", devices.VOLUME_MANAGER, 3057, 428, { 0, 1 }, PLT_ICS_MONITOR_PANEL, "VOR 1 Volume Knob")
+C_130J:defineToggleSwitch("PLT_ICS_MON_VOR_1_BUTTON", devices.VOLUME_MANAGER, 3067, 427, PLT_ICS_MONITOR_PANEL, "VOR 1 Pull to Monitor")
+C_130J:definePotentiometer("PLT_ICS_MON_TACAN_1_VOLUME", devices.VOLUME_MANAGER, 3059, 430, { 0, 1 }, PLT_ICS_MONITOR_PANEL, "TACAN 1 Volume Knob")
+C_130J:defineToggleSwitch("PLT_ICS_MON_TACAN_1_BUTTON", devices.VOLUME_MANAGER, 3069, 429, PLT_ICS_MONITOR_PANEL, "TACAN 1 Pull to Monitor")
+C_130J:definePotentiometer("PLT_ICS_MON_ADF_1_VOLUME", devices.VOLUME_MANAGER, 3061, 432, { 0, 1 }, PLT_ICS_MONITOR_PANEL, "ADF 1 Volume Knob")
+C_130J:defineToggleSwitch("PLT_ICS_MON_ADF_1_BUTTON", devices.VOLUME_MANAGER, 3071, 431, PLT_ICS_MONITOR_PANEL, "ADF 1 Pull to Monitor")
+C_130J:definePotentiometer("PLT_ICS_MON_SAR_VOLUME", devices.VOLUME_MANAGER, 3063, 434, { 0, 1 }, PLT_ICS_MONITOR_PANEL, "SAR Volume Knob")
+C_130J:defineToggleSwitch("PLT_ICS_MON_SAR_BUTTON", devices.VOLUME_MANAGER, 3073, 433, PLT_ICS_MONITOR_PANEL, "SAR Pull to Monitor")
+C_130J:definePotentiometer("PLT_ICS_MON_BCN_VOLUME", devices.VOLUME_MANAGER, 3065, 436, { 0, 1 }, PLT_ICS_MONITOR_PANEL, "BCN Volume Knob")
+C_130J:defineToggleSwitch("PLT_ICS_MON_BCN_BUTTON", devices.VOLUME_MANAGER, 3075, 435, PLT_ICS_MONITOR_PANEL, "BCN Pull to Monitor")
+C_130J:definePotentiometer("PLT_ICS_MON_VOR_2_VOLUME", devices.VOLUME_MANAGER, 3058, 438, { 0, 1 }, PLT_ICS_MONITOR_PANEL, "VOR 2 Volume Knob")
+C_130J:defineToggleSwitch("PLT_ICS_MON_VOR_2_BUTTON", devices.VOLUME_MANAGER, 3068, 437, PLT_ICS_MONITOR_PANEL, "VOR 2 Pull to Monitor")
+C_130J:definePotentiometer("PLT_ICS_MON_TACAN_2_VOLUME", devices.VOLUME_MANAGER, 3060, 440, { 0, 1 }, PLT_ICS_MONITOR_PANEL, "TACAN 2 Volume Knob")
+C_130J:defineToggleSwitch("PLT_ICS_MON_TACAN_2_BUTTON", devices.VOLUME_MANAGER, 3070, 439, PLT_ICS_MONITOR_PANEL, "TACAN 2 Pull to Monitor")
+C_130J:definePotentiometer("PLT_ICS_MON_ADF_2_VOLUME", devices.VOLUME_MANAGER, 3062, 442, { 0, 1 }, PLT_ICS_MONITOR_PANEL, "ADF 2 Volume Knob")
+C_130J:defineToggleSwitch("PLT_ICS_MON_ADF_2_BUTTON", devices.VOLUME_MANAGER, 3072, 441, PLT_ICS_MONITOR_PANEL, "ADF 2 Pull to Monitor")
+C_130J:definePotentiometer("PLT_ICS_MON_BLANK_VOLUME", devices.VOLUME_MANAGER, 3064, 444, { 0, 1 }, PLT_ICS_MONITOR_PANEL, "Blank Volume Knob")
+C_130J:defineToggleSwitch("PLT_ICS_MON_BLANK_BUTTON", devices.VOLUME_MANAGER, 3074, 443, PLT_ICS_MONITOR_PANEL, "Blank Pull to Monitor")
+C_130J:definePotentiometer("PLT_ICS_MON_RWR_VOLUME", devices.VOLUME_MANAGER, 3066, 446, { 0, 1 }, PLT_ICS_MONITOR_PANEL, "RWR Volume Knob")
+C_130J:defineToggleSwitch("PLT_ICS_MON_RWR_BUTTON", devices.VOLUME_MANAGER, 3076, 445, PLT_ICS_MONITOR_PANEL, "RWR Pull to Monitor")
+C_130J:defineFloat("PLT_ICS_MON_BACKLIGHT", 4043, { 0, 1 }, PLT_ICS_MONITOR_PANEL, "Backlight (green)")
 
 -- Pilot Side Console END
 
 -- Copilot Side Console
 
 -- Copilot Oxygen Regulator
+local CPLT_OXYGEN_REGULATOR = "CPLT Oxygen Regulator"
+
+C_130J:defineToggleSwitchManualRange("CPLT_OXYGEN_DILUTER_LEVER", devices.PLANE_ATM, 3034, 192, { -2, 2 }, CPLT_OXYGEN_REGULATOR, "Copilot Oxygen Diluter Lever") -- -2 to 2 for the range is correct for this specific switch
+C_130J:defineToggleSwitchManualRange("CPLT_OXYGEN_SUPPLY_LEVER", devices.PLANE_ATM, 3032, 191, { -2, 2 }, CPLT_OXYGEN_REGULATOR, "Copilot Oxygen Supply Lever") -- -2 to 2 for the range is correct for this specific switch
+C_130J:define3PosTumb("CPLT_OXYGEN_EMERGENCY_LEVER", devices.PLANE_ATM, 3033, 193, CPLT_OXYGEN_REGULATOR, "Copilot Oxygen Emergency Lever", { positions = { "TEST MASK", "NORMAL", "EMERGENCY" } })
+C_130J:defineFloat("CPLT_OXYGEN_PRESSURE", 512, { -1, 1 }, CPLT_OXYGEN_REGULATOR, "Copilot Oxygen Pressure")
 
 -- Copilot Intercommunications System Monitor Panel
+local CPLT_ICS_MONITOR_PANEL = "Copilot Intercommunications System Monitor Panel"
 
--- Get-Home Control Panel
+C_130J:definePotentiometer("CPLT_ICS_MON_VOR_1_VOLUME", devices.VOLUME_MANAGER, 3077, 448, { 0, 1 }, CPLT_ICS_MONITOR_PANEL, "VOR 1 Volume Knob")
+C_130J:defineToggleSwitch("CPLT_ICS_MON_VOR_1_BUTTON", devices.VOLUME_MANAGER, 3087, 447, CPLT_ICS_MONITOR_PANEL, "VOR 1 Pull to Monitor")
+C_130J:definePotentiometer("CPLT_ICS_MON_TACAN_1_VOLUME", devices.VOLUME_MANAGER, 3079, 450, { 0, 1 }, CPLT_ICS_MONITOR_PANEL, "TACAN 1 Volume Knob")
+C_130J:defineToggleSwitch("CPLT_ICS_MON_TACAN_1_BUTTON", devices.VOLUME_MANAGER, 3089, 449, CPLT_ICS_MONITOR_PANEL, "TACAN 1 Pull to Monitor")
+C_130J:definePotentiometer("CPLT_ICS_MON_ADF_1_VOLUME", devices.VOLUME_MANAGER, 3081, 452, { 0, 1 }, CPLT_ICS_MONITOR_PANEL, "ADF 1 Volume Knob")
+C_130J:defineToggleSwitch("CPLT_ICS_MON_ADF_1_BUTTON", devices.VOLUME_MANAGER, 3091, 451, CPLT_ICS_MONITOR_PANEL, "ADF 1 Pull to Monitor")
+C_130J:definePotentiometer("CPLT_ICS_MON_SAR_VOLUME", devices.VOLUME_MANAGER, 3083, 454, { 0, 1 }, CPLT_ICS_MONITOR_PANEL, "SAR Volume Knob")
+C_130J:defineToggleSwitch("CPLT_ICS_MON_SAR_BUTTON", devices.VOLUME_MANAGER, 3093, 453, CPLT_ICS_MONITOR_PANEL, "SAR Pull to Monitor")
+C_130J:definePotentiometer("CPLT_ICS_MON_BCN_VOLUME", devices.VOLUME_MANAGER, 3085, 456, { 0, 1 }, CPLT_ICS_MONITOR_PANEL, "BCN Volume Knob")
+C_130J:defineToggleSwitch("CPLT_ICS_MON_BCN_BUTTON", devices.VOLUME_MANAGER, 3095, 455, CPLT_ICS_MONITOR_PANEL, "BCN Pull to Monitor")
+C_130J:definePotentiometer("CPLT_ICS_MON_VOR_2_VOLUME", devices.VOLUME_MANAGER, 3078, 458, { 0, 1 }, CPLT_ICS_MONITOR_PANEL, "VOR 2 Volume Knob")
+C_130J:defineToggleSwitch("CPLT_ICS_MON_VOR_2_BUTTON", devices.VOLUME_MANAGER, 3088, 457, CPLT_ICS_MONITOR_PANEL, "VOR 2 Pull to Monitor")
+C_130J:definePotentiometer("CPLT_ICS_MON_TACAN_2_VOLUME", devices.VOLUME_MANAGER, 3080, 460, { 0, 1 }, CPLT_ICS_MONITOR_PANEL, "TACAN 2 Volume Knob")
+C_130J:defineToggleSwitch("CPLT_ICS_MON_TACAN_2_BUTTON", devices.VOLUME_MANAGER, 3090, 459, CPLT_ICS_MONITOR_PANEL, "TACAN 2 Pull to Monitor")
+C_130J:definePotentiometer("CPLT_ICS_MON_ADF_2_VOLUME", devices.VOLUME_MANAGER, 3082, 462, { 0, 1 }, CPLT_ICS_MONITOR_PANEL, "ADF 2 Volume Knob")
+C_130J:defineToggleSwitch("CPLT_ICS_MON_ADF_2_BUTTON", devices.VOLUME_MANAGER, 3092, 461, CPLT_ICS_MONITOR_PANEL, "ADF 2 Pull to Monitor")
+C_130J:definePotentiometer("CPLT_ICS_MON_BLANK_VOLUME", devices.VOLUME_MANAGER, 3084, 464, { 0, 1 }, CPLT_ICS_MONITOR_PANEL, "Blank Volume Knob")
+C_130J:defineToggleSwitch("CPLT_ICS_MON_BLANK_BUTTON", devices.VOLUME_MANAGER, 3094, 463, CPLT_ICS_MONITOR_PANEL, "Blank Pull to Monitor")
+C_130J:definePotentiometer("CPLT_ICS_MON_RWR_VOLUME", devices.VOLUME_MANAGER, 3086, 466, { 0, 1 }, CPLT_ICS_MONITOR_PANEL, "RWR Volume Knob")
+C_130J:defineToggleSwitch("CPLT_ICS_MON_RWR_BUTTON", devices.VOLUME_MANAGER, 3096, 465, CPLT_ICS_MONITOR_PANEL, "RWR Pull to Monitor")
+C_130J:defineFloat("CPLT_ICS_MON_BACKLIGHT", 4044, { 0, 1 }, PLT_ICS_MONITOR_PANEL, "Backlight (green)")
 
 -- Copilot Side Console END
 
 -- Main Instrument Panel
 
 -- Parking Brake
+local PARKING_BRAKE = "Parking Brake"
+
+C_130J:defineToggleSwitch("PARKING_BRAKE_HANDLE", devices.MECH_INTERFACE, 3037, 29, PARKING_BRAKE, "Parking Brake Handle")
 
 -- Pilot Reference Set/Mode Select Panel
 
+local function parse_ref_mode_display(indicator_id)
+	local display = Module.parse_indication(indicator_id)
+
+	if display == nil then
+		return ""
+	end
+
+	local value = display["ref_mode_value"]
+	local period = display["ref_symbol_period"]
+
+	if period ~= nil then
+		value = value:sub(1, #value - 1) .. period .. value:sub(#value)
+	end
+
+	return Functions.pad_left(value, 5)
+end
+
+local PLT_REF_MODE = "PLT Reference Set/Mode Select Panel"
+
+-- rotaries will only act as single increment, regardless of value set
+C_130J:defineTumb("PLT_REF_MODE_SELECT", devices.PILOT_REF_MODE_PANEL, 3001, 110, 0.4, { -0.8, 0.8 }, nil, false, PLT_REF_MODE, "Reference Select Switch", { positions = { "HP", "RAD ALT", "IAS", "FPA", "MINS" } })
+C_130J:defineRotaryWithRange("PLT_REF_SET_KNOB", devices.PILOT_REF_MODE_PANEL, 3002, 109, { -1, 1 }, PLT_REF_MODE, "Reference Set Knob")
+C_130J:definePushButton("PLT_REF_SET_PRESS", devices.PILOT_REF_MODE_PANEL, 3003, 556, PLT_REF_MODE, "Reference Set Knob Press")
+C_130J:defineRotaryWithRange("PLT_ALTITUDE_ALERT_KNOB", devices.PILOT_REF_MODE_PANEL, 3005, 108, { -1, 1 }, PLT_REF_MODE, "Altitude Alerter Set Knob")
+C_130J:definePushButton("PLT_ALTITUDE_ALERT_PRESS", devices.PILOT_REF_MODE_PANEL, 3006, 557, PLT_REF_MODE, "Altitude Alerter Sync")
+C_130J:defineRotaryWithRange("PLT_BARO_SET_KNOB", devices.PILOT_REF_MODE_PANEL, 3007, 107, { -1, 1 }, PLT_REF_MODE, "Baro Set Knob")
+C_130J:definePushButton("PLT_BARO_SET_PRESS", devices.PILOT_REF_MODE_PANEL, 3008, 558, PLT_REF_MODE, "Baro Set Knob Press")
+
+C_130J:definePushButton("PLT_REF_MODE_MASTER_WARNING", devices.PILOT_REF_MODE_PANEL, 3009, 80, PLT_REF_MODE, "Master Warning Button")
+C_130J:definePushButton("PLT_REF_MODE_MASTER_CAUTION", devices.PILOT_REF_MODE_PANEL, 3010, 81, PLT_REF_MODE, "Master Caution Button")
+C_130J:definePushButton("PLT_AP_MODE_ALT", devices.AP_INTERFACE, 3001, 82, PLT_REF_MODE, "ALT Mode Switch")
+C_130J:definePushButton("PLT_AP_MODE_SEL", devices.AP_INTERFACE, 3002, 84, PLT_REF_MODE, "SEL Mode Switch")
+C_130J:definePushButton("PLT_AP_MODE_HDG", devices.AP_INTERFACE, 3003, 86, PLT_REF_MODE, "HDG Mode Switch")
+C_130J:definePushButton("PLT_AP_MODE_NAV", devices.AP_INTERFACE, 3004, 88, PLT_REF_MODE, "NAV Mode Switch")
+C_130J:definePushButton("PLT_AP_MODE_APPR", devices.AP_INTERFACE, 3005, 90, PLT_REF_MODE, "APPR Mode Switch")
+C_130J:definePushButton("PLT_AP_MODE_VS", devices.AP_INTERFACE, 3006, 83, PLT_REF_MODE, "VS Mode Switch")
+C_130J:definePushButton("PLT_AP_MODE_IAS", devices.AP_INTERFACE, 3007, 85, PLT_REF_MODE, "IAS Mode Switch")
+C_130J:definePushButton("PLT_AP_MODE_BLANK", devices.AP_INTERFACE, 3010, 87, PLT_REF_MODE, "Blank Mode Switch")
+C_130J:definePushButton("PLT_AP_MODE_CAPS", devices.AP_INTERFACE, 3008, 89, PLT_REF_MODE, "CAPS Mode Switch")
+C_130J:definePushButton("PLT_AP_MODE_AT", devices.AP_INTERFACE, 3009, 91, PLT_REF_MODE, "A/T Mode Switch")
+
+C_130J:defineIndicatorLight("PLT_REF_MODE_MASTER_WARNING_L", 4045, PLT_REF_MODE, "Master Warning Light", { color = "red" })
+C_130J:defineIndicatorLight("PLT_REF_MODE_MASTER_CAUTION_L", 4046, PLT_REF_MODE, "Master Caution Light", { color = "yellow" })
+C_130J:defineIndicatorLight("PLT_AP_MODE_ALT_L", 4047, PLT_REF_MODE, "ALT Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_AP_MODE_SEL_L", 4049, PLT_REF_MODE, "SEL Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_AP_MODE_HDG_L", 4051, PLT_REF_MODE, "HDG Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_AP_MODE_NAV_L", 4052, PLT_REF_MODE, "NAV Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_AP_MODE_APPR_L", 4054, PLT_REF_MODE, "APPR Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_AP_MODE_VS_L", 4048, PLT_REF_MODE, "VS Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_AP_MODE_IAS_L", 4050, PLT_REF_MODE, "IAS Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_AP_MODE_CAPS_L", 4053, PLT_REF_MODE, "CAPS Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_AP_MODE_AT_L", 4055, PLT_REF_MODE, "A/T Mode Light", { color = "green" })
+
+C_130J:defineString("PLT_REF_MODE_DISPLAY", function()
+	return parse_ref_mode_display(16)
+end, 5, PLT_REF_MODE, "REF/MODE Display")
+
 -- Copilot Reference Set/Mode Select Panel
+local CPLT_REF_MODE = "CPLT Reference Set/Mode Select Panel"
+
+-- rotaries will only act as single increment, regardless of value set
+C_130J:defineTumb("CPLT_REF_MODE_SELECT", devices.COPILOT_REF_MODE_PANEL, 3001, 111, 0.4, { -0.8, 0.8 }, nil, false, CPLT_REF_MODE, "Reference Select Switch", { positions = { "HP", "RAD ALT", "IAS", "FPA", "MINS" } })
+C_130J:defineRotaryWithRange("CPLT_REF_SET_KNOB", devices.COPILOT_REF_MODE_PANEL, 3002, 106, { -1, 1 }, CPLT_REF_MODE, "Reference Set Knob")
+C_130J:definePushButton("CPLT_REF_SET_PRESS", devices.COPILOT_REF_MODE_PANEL, 3003, 559, CPLT_REF_MODE, "Reference Set Knob Press")
+C_130J:defineRotaryWithRange("CPLT_ALTITUDE_ALERT_KNOB", devices.COPILOT_REF_MODE_PANEL, 3005, 105, { -1, 1 }, CPLT_REF_MODE, "Altitude Alerter Set Knob")
+C_130J:definePushButton("CPLT_ALTITUDE_ALERT_PRESS", devices.COPILOT_REF_MODE_PANEL, 3006, 560, CPLT_REF_MODE, "Altitude Alerter Sync")
+C_130J:defineRotaryWithRange("CPLT_BARO_SET_KNOB", devices.COPILOT_REF_MODE_PANEL, 3007, 104, { -1, 1 }, CPLT_REF_MODE, "Baro Set Knob")
+C_130J:definePushButton("CPLT_BARO_SET_PRESS", devices.COPILOT_REF_MODE_PANEL, 3008, 561, CPLT_REF_MODE, "Baro Set Knob Press")
+
+C_130J:definePushButton("CPLT_REF_MODE_MASTER_WARNING", devices.COPILOT_REF_MODE_PANEL, 3009, 92, CPLT_REF_MODE, "Master Warning Button")
+C_130J:definePushButton("CPLT_REF_MODE_MASTER_CAUTION", devices.COPILOT_REF_MODE_PANEL, 3010, 93, CPLT_REF_MODE, "Master Caution Button")
+C_130J:definePushButton("CPLT_AP_MODE_ALT", devices.AP_INTERFACE, 3021, 94, CPLT_REF_MODE, "ALT Mode Switch")
+C_130J:definePushButton("CPLT_AP_MODE_SEL", devices.AP_INTERFACE, 3022, 96, CPLT_REF_MODE, "SEL Mode Switch")
+C_130J:definePushButton("CPLT_AP_MODE_HDG", devices.AP_INTERFACE, 3023, 98, CPLT_REF_MODE, "HDG Mode Switch")
+C_130J:definePushButton("CPLT_AP_MODE_NAV", devices.AP_INTERFACE, 3024, 100, CPLT_REF_MODE, "NAV Mode Switch")
+C_130J:definePushButton("CPLT_AP_MODE_APPR", devices.AP_INTERFACE, 3025, 102, CPLT_REF_MODE, "APPR Mode Switch")
+C_130J:definePushButton("CPLT_AP_MODE_VS", devices.AP_INTERFACE, 3026, 95, CPLT_REF_MODE, "VS Mode Switch")
+C_130J:definePushButton("CPLT_AP_MODE_IAS", devices.AP_INTERFACE, 3027, 97, CPLT_REF_MODE, "IAS Mode Switch")
+C_130J:definePushButton("CPLT_AP_MODE_BLANK", devices.AP_INTERFACE, 3030, 99, CPLT_REF_MODE, "Blank Mode Switch")
+C_130J:definePushButton("CPLT_AP_MODE_CAPS", devices.AP_INTERFACE, 3028, 101, CPLT_REF_MODE, "CAPS Mode Switch")
+C_130J:definePushButton("CPLT_AP_MODE_AT", devices.AP_INTERFACE, 3029, 103, CPLT_REF_MODE, "A/T Mode Switch")
+
+-- draw args are identical to PLT
+C_130J:defineIndicatorLight("CPLT_REF_MODE_MASTER_WARNING_L", 4045, CPLT_REF_MODE, "Master Warning Light", { color = "red" })
+C_130J:defineIndicatorLight("CPLT_REF_MODE_MASTER_CAUTION_L", 4046, CPLT_REF_MODE, "Master Caution Light", { color = "yellow" })
+C_130J:defineIndicatorLight("CPLT_AP_MODE_ALT_L", 4047, CPLT_REF_MODE, "ALT Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_AP_MODE_SEL_L", 4049, CPLT_REF_MODE, "SEL Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_AP_MODE_HDG_L", 4051, CPLT_REF_MODE, "HDG Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_AP_MODE_NAV_L", 4052, CPLT_REF_MODE, "NAV Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_AP_MODE_APPR_L", 4054, CPLT_REF_MODE, "APPR Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_AP_MODE_VS_L", 4048, CPLT_REF_MODE, "VS Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_AP_MODE_IAS_L", 4050, CPLT_REF_MODE, "IAS Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_AP_MODE_CAPS_L", 4053, CPLT_REF_MODE, "CAPS Mode Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_AP_MODE_AT_L", 4055, CPLT_REF_MODE, "A/T Mode Light", { color = "green" })
+
+C_130J:defineString("CPLT_REF_MODE_DISPLAY", function()
+	return parse_ref_mode_display(17)
+end, 5, CPLT_REF_MODE, "REF/MODE Display")
 
 -- Left Outer Avionics Management Unit
+local LO_AMU = "Left Outer AMU"
+
+C_130J:defineRockerSwitch("L_AMU_BRT_SWITCH", devices.P_DISPLAYS, 3009, 3009, 3020, 3020, 200, LO_AMU, "Left AMU Brightness Switch", { positions = { "DECREASE", "MIDDLE", "INCREASE" } })
+
+C_130J:definePushButton("LO_AMU_L1", devices.P_DISPLAYS, 3011, 133, LO_AMU, "Button L1")
+C_130J:definePushButton("LO_AMU_L2", devices.P_DISPLAYS, 3012, 134, LO_AMU, "Button L2")
+C_130J:definePushButton("LO_AMU_L3", devices.P_DISPLAYS, 3013, 135, LO_AMU, "Button L3")
+C_130J:definePushButton("LO_AMU_L4", devices.P_DISPLAYS, 3014, 136, LO_AMU, "Button L4")
+C_130J:definePushButton("LO_AMU_R1", devices.P_DISPLAYS, 3015, 137, LO_AMU, "Button R1")
+C_130J:definePushButton("LO_AMU_R2", devices.P_DISPLAYS, 3016, 138, LO_AMU, "Button R2")
+C_130J:definePushButton("LO_AMU_R3", devices.P_DISPLAYS, 3017, 139, LO_AMU, "Button R3")
+C_130J:definePushButton("LO_AMU_R4", devices.P_DISPLAYS, 3018, 140, LO_AMU, "Button R4")
 
 -- Left Inner Avionics Management Unit
+local LI_AMU = "Left Inner AMU"
+
+C_130J:definePushButton("LI_AMU_L1", devices.P_DISPLAYS, 3001, 141, LI_AMU, "Button L1")
+C_130J:definePushButton("LI_AMU_L2", devices.P_DISPLAYS, 3002, 142, LI_AMU, "Button L2")
+C_130J:definePushButton("LI_AMU_L3", devices.P_DISPLAYS, 3003, 143, LI_AMU, "Button L3")
+C_130J:definePushButton("LI_AMU_L4", devices.P_DISPLAYS, 3004, 144, LI_AMU, "Button L4")
+C_130J:definePushButton("LI_AMU_R1", devices.P_DISPLAYS, 3005, 145, LI_AMU, "Button R1")
+C_130J:definePushButton("LI_AMU_R2", devices.P_DISPLAYS, 3006, 146, LI_AMU, "Button R2")
+C_130J:definePushButton("LI_AMU_R3", devices.P_DISPLAYS, 3007, 147, LI_AMU, "Button R3")
+C_130J:definePushButton("LI_AMU_R4", devices.P_DISPLAYS, 3008, 148, LI_AMU, "Button R4")
 
 -- Right Inner Avionics Management Unit
+local RI_AMU = "Right Inner AMU"
+
+C_130J:definePushButton("RI_AMU_L1", devices.C_DISPLAYS, 3011, 174, RI_AMU, "Button L1")
+C_130J:definePushButton("RI_AMU_L2", devices.C_DISPLAYS, 3012, 175, RI_AMU, "Button L2")
+C_130J:definePushButton("RI_AMU_L3", devices.C_DISPLAYS, 3013, 176, RI_AMU, "Button L3")
+C_130J:definePushButton("RI_AMU_L4", devices.C_DISPLAYS, 3014, 177, RI_AMU, "Button L4")
+C_130J:definePushButton("RI_AMU_R1", devices.C_DISPLAYS, 3015, 178, RI_AMU, "Button R1")
+C_130J:definePushButton("RI_AMU_R2", devices.C_DISPLAYS, 3016, 179, RI_AMU, "Button R2")
+C_130J:definePushButton("RI_AMU_R3", devices.C_DISPLAYS, 3017, 180, RI_AMU, "Button R3")
+C_130J:definePushButton("RI_AMU_R4", devices.C_DISPLAYS, 3018, 181, RI_AMU, "Button R4")
 
 -- Right Outer Avionics Management Unit
+local RO_AMU = "Right Outer AMU"
+
+C_130J:defineRockerSwitch("R_AMU_BRT_SWITCH", devices.C_DISPLAYS, 3009, 3009, 3020, 3020, 202, RO_AMU, "Right AMU Brightness Switch", { positions = { "DECREASE", "MIDDLE", "INCREASE" } })
+
+C_130J:definePushButton("RO_AMU_L1", devices.C_DISPLAYS, 3001, 182, RO_AMU, "Button L1")
+C_130J:definePushButton("RO_AMU_L2", devices.C_DISPLAYS, 3002, 183, RO_AMU, "Button L2")
+C_130J:definePushButton("RO_AMU_L3", devices.C_DISPLAYS, 3003, 184, RO_AMU, "Button L3")
+C_130J:definePushButton("RO_AMU_L4", devices.C_DISPLAYS, 3004, 185, RO_AMU, "Button L4")
+C_130J:definePushButton("RO_AMU_R1", devices.C_DISPLAYS, 3005, 186, RO_AMU, "Button R1")
+C_130J:definePushButton("RO_AMU_R2", devices.C_DISPLAYS, 3006, 187, RO_AMU, "Button R2")
+C_130J:definePushButton("RO_AMU_R3", devices.C_DISPLAYS, 3007, 188, RO_AMU, "Button R3")
+C_130J:definePushButton("RO_AMU_R4", devices.C_DISPLAYS, 3008, 189, RO_AMU, "Button R4")
 
 -- Communication/Navigation/Electronic Circuit Breaker Panel
+local CNBP = "Communication/Navigation/Electronic Circuit Breaker Panel"
+
+C_130J:defineRockerSwitch("CNBP_BRT_SWITCH", devices.CNBP, 3024, 3024, 3025, 3025, 201, CNBP, "Brightness Switch", { positions = { "DECREASE", "MIDDLE", "INCREASE" } })
+
+C_130J:definePushButton("CNBP_COMM", devices.CNBP, 3021, 159, CNBP, "COMM Button")
+C_130J:definePushButton("CNBP_NAV", devices.CNBP, 3022, 160, CNBP, "NAV Button")
+C_130J:definePushButton("CNBP_ECB", devices.CNBP, 3023, 161, CNBP, "ECB Button")
+
+C_130J:definePushButton("CNBP_NUMPAD_1", devices.CNBP, 3002, 162, CNBP, "Numpad Button 1")
+C_130J:definePushButton("CNBP_NUMPAD_2", devices.CNBP, 3003, 163, CNBP, "Numpad Button 2")
+C_130J:definePushButton("CNBP_NUMPAD_3", devices.CNBP, 3004, 164, CNBP, "Numpad Button 3")
+C_130J:definePushButton("CNBP_NUMPAD_4", devices.CNBP, 3005, 165, CNBP, "Numpad Button 4")
+C_130J:definePushButton("CNBP_NUMPAD_5", devices.CNBP, 3006, 166, CNBP, "Numpad Button 5")
+C_130J:definePushButton("CNBP_NUMPAD_6", devices.CNBP, 3007, 167, CNBP, "Numpad Button 6")
+C_130J:definePushButton("CNBP_NUMPAD_7", devices.CNBP, 3008, 168, CNBP, "Numpad Button 7")
+C_130J:definePushButton("CNBP_NUMPAD_8", devices.CNBP, 3009, 169, CNBP, "Numpad Button 8")
+C_130J:definePushButton("CNBP_NUMPAD_9", devices.CNBP, 3010, 170, CNBP, "Numpad Button 9")
+C_130J:definePushButton("CNBP_NUMPAD_DECIMAL", devices.CNBP, 3011, 171, CNBP, "Numpad Button Decimal")
+C_130J:definePushButton("CNBP_NUMPAD_0", devices.CNBP, 3001, 172, CNBP, "Numpad Button 0")
+C_130J:definePushButton("CNBP_NUMPAD_CLEAR", devices.CNBP, 3012, 173, CNBP, "Numpad Button Clear")
+
+C_130J:definePushButton("CNBP_L1", devices.CNBP, 3013, 152, CNBP, "Button L1")
+C_130J:definePushButton("CNBP_L2", devices.CNBP, 3014, 152, CNBP, "Button L2")
+C_130J:definePushButton("CNBP_L3", devices.CNBP, 3015, 153, CNBP, "Button L3")
+C_130J:definePushButton("CNBP_L4", devices.CNBP, 3016, 154, CNBP, "Button L4")
+C_130J:definePushButton("CNBP_R1", devices.CNBP, 3017, 155, CNBP, "Button R1")
+C_130J:definePushButton("CNBP_R2", devices.CNBP, 3018, 156, CNBP, "Button R2")
+C_130J:definePushButton("CNBP_R3", devices.CNBP, 3019, 157, CNBP, "Button R3")
+C_130J:definePushButton("CNBP_R4", devices.CNBP, 3020, 158, CNBP, "Button R4")
 
 -- Pilot Mode Annunciator Panel
+local PLT_MODE_ANNUNICIATOR = "PLT Mode Annunciator Panel"
+
+C_130J:defineIndicatorLight("PLT_MODE_ANNUNCIATOR_AP_ON", 4056, PLT_MODE_ANNUNICIATOR, "AP ON Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_MODE_ANNUNCIATOR_PTCH_OFF", 4057, PLT_MODE_ANNUNICIATOR, "PTCH OFF Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_MODE_ANNUNCIATOR_NAV_ARM", 4058, PLT_MODE_ANNUNICIATOR, "NAV ARM Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_MODE_ANNUNCIATOR_GS_ARM", 4059, PLT_MODE_ANNUNICIATOR, "GS ARM Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_MODE_ANNUNCIATOR_GO_ARND", 4060, PLT_MODE_ANNUNICIATOR, "GO ARND Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_MODE_ANNUNCIATOR_CAT2_ARM", 4061, PLT_MODE_ANNUNICIATOR, "CAT2 ARM Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_MODE_ANNUNCIATOR_AP_DSGN", 4062, PLT_MODE_ANNUNICIATOR, "AP DSGN Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_MODE_ANNUNCIATOR_LAT_OFF", 4063, PLT_MODE_ANNUNICIATOR, "LAT OFF Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_MODE_ANNUNCIATOR_NAV_CAPT", 4064, PLT_MODE_ANNUNICIATOR, "NAV CAPT Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_MODE_ANNUNCIATOR_GS_CAPT", 4065, PLT_MODE_ANNUNICIATOR, "GS CAPT Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_MODE_ANNUNCIATOR_BACK_LOC", 4066, PLT_MODE_ANNUNICIATOR, "BACK LOC Light", { color = "green" })
+C_130J:defineIndicatorLight("PLT_MODE_ANNUNCIATOR_CAT2", 4067, PLT_MODE_ANNUNICIATOR, "CAT2 Light", { color = "green" })
 
 -- Copilot Mode Annunciator Panel
+local CPLT_MODE_ANNUNICIATOR = "CPLT Mode Annunciator Panel"
 
--- Pilot Inclinometer
-
--- Copilot Inclinometer
+C_130J:defineIndicatorLight("CPLT_MODE_ANNUNCIATOR_AP_ON", 4114, CPLT_MODE_ANNUNICIATOR, "AP ON Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_MODE_ANNUNCIATOR_PTCH_OFF", 4115, CPLT_MODE_ANNUNICIATOR, "PTCH OFF Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_MODE_ANNUNCIATOR_NAV_ARM", 4116, CPLT_MODE_ANNUNICIATOR, "NAV ARM Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_MODE_ANNUNCIATOR_GS_ARM", 4117, CPLT_MODE_ANNUNICIATOR, "GS ARM Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_MODE_ANNUNCIATOR_GO_ARND", 4118, CPLT_MODE_ANNUNICIATOR, "GO ARND Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_MODE_ANNUNCIATOR_CAT2_ARM", 4119, CPLT_MODE_ANNUNICIATOR, "CAT2 ARM Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_MODE_ANNUNCIATOR_AP_DSGN", 4120, CPLT_MODE_ANNUNICIATOR, "AP DSGN Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_MODE_ANNUNCIATOR_LAT_OFF", 4121, CPLT_MODE_ANNUNICIATOR, "LAT OFF Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_MODE_ANNUNCIATOR_NAV_CAPT", 4122, CPLT_MODE_ANNUNICIATOR, "NAV CAPT Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_MODE_ANNUNCIATOR_GS_CAPT", 4123, CPLT_MODE_ANNUNICIATOR, "GS CAPT Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_MODE_ANNUNCIATOR_BACK_LOC", 4124, CPLT_MODE_ANNUNICIATOR, "BACK LOC Light", { color = "green" })
+C_130J:defineIndicatorLight("CPLT_MODE_ANNUNCIATOR_CAT2", 4125, CPLT_MODE_ANNUNICIATOR, "CAT2 Light", { color = "green" })
 
 -- Left Outer Head Down Display
+local LO_HDD = "Left Outer HDD"
+
+C_130J:defineRockerSwitch("LO_HDD_BRT_SWITCH", devices.P_DISPLAYS, 3019, 3019, 3022, 3022, 116, LO_HDD, "Brightness Switch", { positions = { "DECREASE", "MIDDLE", "INCREASE" } })
+C_130J:defineFloat("LO_HDD_INCLINOMETER", 130, { 0, 1 }, LO_HDD, "Inclinometer")
 
 -- Left Inner Head Down Display
+local LI_HDD = "Left Inner HDD"
+
+C_130J:defineRockerSwitch("LI_HDD_BRT_SWITCH", devices.P_DISPLAYS, 3010, 3010, 3021, 3021, 117, LI_HDD, "Brightness Switch", { positions = { "DECREASE", "MIDDLE", "INCREASE" } })
 
 -- Right Inner Head Down Display
+local RI_HDD = "Right Inner HDD"
+
+C_130J:defineRockerSwitch("RI_HDD_BRT_SWITCH", devices.C_DISPLAYS, 3010, 3010, 3021, 3021, 118, RI_HDD, "Brightness Switch", { positions = { "DECREASE", "MIDDLE", "INCREASE" } })
 
 -- Right Outer Head Down Display
+local RO_HDD = "Right Outer HDD"
+
+C_130J:defineRockerSwitch("RO_HDD_BRT_SWITCH", devices.C_DISPLAYS, 3019, 3019, 3022, 3022, 119, RO_HDD, "Brightness Switch", { positions = { "DECREASE", "MIDDLE", "INCREASE" } })
+C_130J:defineFloat("CPLT_INCLINOMETER", 130, { 0, 1 }, RO_HDD, "Inclinometer")
 
 -- Hydraulic Control Panel
+local HYD_PANEL = "Hydraulic Control Panel"
+
+C_130J:defineToggleSwitch("HYD_ANTI_SKID", devices.ENGINE_APU_CTRL, 3029, 37, HYD_PANEL, "Anti-Skid Switch")
+C_130J:definePushButton("HYD_EMER_BRAKE_SEL", devices.HYDRAULICS, 3001, 99, HYD_PANEL, "Emergency Brake Select")
+C_130J:definePushButton("HYD_ENGINE_PUMP_1", devices.HYDRAULICS, 3003, 39, HYD_PANEL, "Engine 1 Utility Pump")
+C_130J:definePushButton("HYD_ENGINE_PUMP_2", devices.HYDRAULICS, 3004, 40, HYD_PANEL, "Engine 2 Utility Pump")
+C_130J:definePushButton("HYD_ENGINE_PUMP_3", devices.HYDRAULICS, 3005, 41, HYD_PANEL, "Engine 3 Boost Pump")
+C_130J:definePushButton("HYD_ENGINE_PUMP_4", devices.HYDRAULICS, 3006, 42, HYD_PANEL, "Engine 4 Boost Pump")
+C_130J:definePushButton("HYD_ENGINE_PUMP_SUCTION_UTIL", devices.HYDRAULICS, 3007, 43, HYD_PANEL, "Utility Suction Boost Pump")
+C_130J:definePushButton("HYD_ENGINE_PUMP_SUCTION_BOOST", devices.HYDRAULICS, 3008, 44, HYD_PANEL, "Suction Boost Pump")
+C_130J:defineToggleSwitch("HYD_AUX_PUMP", devices.HYDRAULICS, 3002, 45, HYD_PANEL, "Auxiliary Hydraulic Pump")
+
+C_130J:defineIndicatorLight("HYD_AUX_PUMP_ON", 4041, HYD_PANEL, "Auxiliary Pump On", { color = "green" })
+C_130J:defineIndicatorLight("HYD_EMER_BRAKE_SEL_EMER", 4068, HYD_PANEL, "Emergency Brake Select EMER", { color = "green" })
+C_130J:defineIndicatorLight("HYD_ENGINE_PUMP_1_OFF", 4069, HYD_PANEL, "Engine 1 Utility Pump Off", { color = "green" })
+C_130J:defineIndicatorLight("HYD_ENGINE_PUMP_2_OFF", 4070, HYD_PANEL, "Engine 2 Utility Pump Off", { color = "green" })
+C_130J:defineIndicatorLight("HYD_ENGINE_PUMP_3_OFF", 4071, HYD_PANEL, "Engine 3 Boost Pump Off", { color = "green" })
+C_130J:defineIndicatorLight("HYD_ENGINE_PUMP_4_OFF", 4072, HYD_PANEL, "Engine 4 Boost Pump Off", { color = "green" })
+C_130J:defineIndicatorLight("HYD_ENGINE_PUMP_SUCTION_UTIL_OFF", 4073, HYD_PANEL, "Utility Suction Boost Pump Off", { color = "green" })
+C_130J:defineIndicatorLight("HYD_ENGINE_PUMP_SUCTION_BOOST_OFF", 4074, HYD_PANEL, "Suction Boost Pump Off", { color = "green" })
+
+C_130J:defineString("HYD_AUX_PRESSURE", function()
+	return parse_overhead_lcd_line(43, { 4 })
+end, 4, HYD_PANEL, "Auxiliary Pressure")
 
 -- Landing Gear/Landing Lights Panel
+local LANDING = "Landing Gear/Landing Lights Panel"
+
+C_130J:defineFloat("LANDING_GEAR_LOCKED_L", 4033, { 0, 1 }, LANDING, "Left Landing Gear Locked Light (Green)")
+C_130J:defineFloat("LANDING_GEAR_LOCKED_R", 4034, { 0, 1 }, LANDING, "Right Landing Gear Locked Light (Green)")
+C_130J:defineFloat("LANDING_GEAR_LOCKED_C", 4032, { 0, 1 }, LANDING, "Center Landing Gear Locked Light (Green)")
+C_130J:defineFloat("LANDING_GEAR_LEVER_LIGHT", 4035, { 0, 1 }, LANDING, "Landing Gear Handle Light (Red)")
+
+C_130J:defineToggleSwitch("LANDING_GEAR_LEVER", devices.HYDRAULICS, 3022, 126, LANDING, "Landing Gear Lever")
+C_130J:definePushButton("LANDING_GEAR_LOCK_RELEASE", devices.HYDRAULICS, 3027, 36, LANDING, "Landing Gear Downlock Release")
+C_130J:defineToggleSwitch("LANDING_LIGHTS_L", devices.LIGHTING_PANELS, 3002, 32, LANDING, "Left Landing Lights")
+C_130J:defineToggleSwitch("LANDING_LIGHTS_R", devices.LIGHTING_PANELS, 3001, 33, LANDING, "Right Landing Lights")
+C_130J:defineToggleSwitch("TAXI_LIGHTS", devices.LIGHTING_PANELS, 3006, 34, LANDING, "Taxi Lights")
+C_130J:defineToggleSwitch("TAXI_LIGHTS_WINGTIP", devices.LIGHTING_PANELS, 3007, 35, LANDING, "Wingtip Taxi Lights")
+
+C_130J:define3PosTumb("LANDING_LIGHTS_MOTOR_L", devices.LIGHTING_PANELS, 3004, 30, LANDING, "Left Landing Light Motor", { positions = { "RETRACT", "HOLD", "EXTEND" } })
+C_130J:define3PosTumb("LANDING_LIGHTS_MOTOR_R", devices.LIGHTING_PANELS, 3003, 31, LANDING, "Right Landing Light Motor", { positions = { "RETRACT", "HOLD", "EXTEND" } })
 
 -- Flap and Trim Indicator Panel
+local FLAP_TRIM_INDICATOR = "Flap and Trim Indicator Panel"
+
+C_130J:defineFloat("FLAP_TRIM_INDICATOR_LEFT_AILERON", 470, { 0, 1 }, FLAP_TRIM_INDICATOR, "Left Aileron Trim Indicator")
+C_130J:defineFloat("FLAP_TRIM_INDICATOR_RIGHT_AILERON", 471, { 0, 1 }, FLAP_TRIM_INDICATOR, "Right Aileron Trim Indicator")
+C_130J:defineFloat("FLAP_TRIM_INDICATOR_RUDDER", 472, { 0, 1 }, FLAP_TRIM_INDICATOR, "Rudder Trim Indicator")
+C_130J:defineFloat("FLAP_TRIM_INDICATOR_ELEVATOR", 473, { 0, 1 }, FLAP_TRIM_INDICATOR, "Elevator Trim Indicator")
+C_130J:defineFloat("FLAP_TRIM_INDICATOR_FLAPS", 426, { 0, 1 }, FLAP_TRIM_INDICATOR, "Flaps Trim Indicator")
 
 -- Standby Altimeter/Airspeed Indicator
+local STBY_ALT = "Standby Altimeter/Airspeed Indicator"
+
+C_130J:defineRotary("STBY_BARO_KNOB", devices.MECH_INTERFACE, 3102, 125, STBY_ALT, "Baro Adjust Knob")
+C_130J:defineFloat("STBY_ALT_INDICATOR", 129, { -1, 1 }, STBY_ALT, "Altitude Indicator")
+C_130J:defineFloat("STBY_ALT_IAS_INDICATOR", 1508, { -1, 1 }, STBY_ALT, "IAS Indicator")
+C_130J:defineFloat("STBY_ALT_TEN_THOUSANDS", 1501, { -1, 1 }, STBY_ALT, "Altitude Counter (Tens of Thousands)")
+C_130J:defineFloat("STBY_ALT_THOUSANDS", 1500, { -1, 1 }, STBY_ALT, "Altitude Counter (Thousands)")
+
+local function stby_alt_display(dev0)
+	local val_tens = Module.round((dev0:get_argument_value(1501) + 1) * 5) % 10
+	local val_thousands = Module.round((dev0:get_argument_value(1500) + 1) * 5) % 10
+
+	local prefix = val_tens == 0 and "-" or (val_tens - 1)
+	return prefix .. val_thousands .. "000"
+end
+C_130J:defineString("STBY_ALT_COUNTER", function(dev0)
+	return stby_alt_display(dev0)
+end, 5, STBY_ALT, "Altitude Counter")
+
+C_130J:defineFloat("STBY_INHG_THOUSANDS", 1504, { -1, 1 }, STBY_ALT, "inHg Pressure Counter (Thousands)")
+C_130J:defineFloat("STBY_INHG_TENS", 1503, { -1, 1 }, STBY_ALT, "inHg Pressure Counter (Tens)")
+C_130J:defineFloat("STBY_INHG_ONES", 1502, { -1, 1 }, STBY_ALT, "inHg Pressure Counter (Ones)")
+
+local function stby_inhg_display(dev0)
+	local val_ones = Module.round((dev0:get_argument_value(1502) + 1) * 5) % 10
+	local val_tens = Module.round((dev0:get_argument_value(1503) + 1) * 5) % 10
+	local val_thousands = Module.round((dev0:get_argument_value(1504) + 1) * 5) % 10
+
+	local digits_thousands = val_thousands == 0 and "30" or (val_thousands == 1 and "00" or tostring(val_thousands + 20))
+	return digits_thousands .. val_tens .. val_ones
+end
+C_130J:defineString("STBY_INHG_COUNTER", function(dev0)
+	return stby_inhg_display(dev0)
+end, 4, STBY_ALT, "inHg Pressure Counter")
+
+C_130J:defineFloat("STBY_MB_THOUSANDS", 1507, { -1, 1 }, STBY_ALT, "mbar Pressure Counter (Thousands)")
+C_130J:defineFloat("STBY_MB_TENS", 1506, { -1, 1 }, STBY_ALT, "mbar Pressure Counter (Tens)")
+C_130J:defineFloat("STBY_MB_ONES", 1505, { -1, 1 }, STBY_ALT, "mbar Pressure Counter (Ones)")
+
+local function stby_mb_display(dev0)
+	local val_ones = Module.round((dev0:get_argument_value(1505) + 1) * 5) % 10
+	local val_tens = Module.round((dev0:get_argument_value(1506) + 1) * 5) % 10
+	local val_thousands = Module.round((dev0:get_argument_value(1507) + 1) * 5) % 10
+
+	local digit_thousands = val_thousands == 0 and "10" or (val_thousands <= 6 and "00" or "0" .. val_thousands)
+	return digit_thousands .. val_tens .. val_ones
+end
+C_130J:defineString("STBY_MB_COUNTER", function(dev0)
+	return stby_mb_display(dev0)
+end, 4, STBY_ALT, "mbar Pressure Counter")
 
 -- Standby Attitude Indicator
+local STBY_ATT = "Standby Attitude Indicator"
+
+C_130J:defineFloat("STBY_ATT_PITCH_BAR", 120, { 0, 1 }, STBY_ATT, "Attitude Indicator Bar")
+C_130J:defineFloat("STBY_ATT_PITCH", 122, { -1, 1 }, STBY_ATT, "Attitude Indicator Pitch")
+C_130J:defineFloat("STBY_ATT_ROLL", 123, { -1, 1 }, STBY_ATT, "Attitude Indicator Roll")
+C_130J:defineFloat("STBY_ATT_FLAG", 121, { 0, 1 }, STBY_ATT, "Attitude Indicator Off Flag")
+C_130J:definePotentiometer("STBY_ATT_KNOB", devices.MECH_INTERFACE, 3103, 127, { -1, 1 }, STBY_ATT, "Attitude Indicator Knob Rotate")
+C_130J:definePushButton("STBY_ATT_KNOB_BUTTON", devices.MECH_INTERFACE, 3104, 128, STBY_ATT, "Attitude Indicator Knob Button")
 
 -- Main Instrument Panel END
 
@@ -563,78 +996,233 @@ C_130J:defineString("FUEL_XFER_TOTAL_AMOUNT", function()
 end, 5, FUEL_MANAGEMENT, "Total Fuel Transfer")
 
 -- Air Conditioning Panel
+local AC = "Air Conditioning Panel"
+
+C_130J:definePushButton("AC_CABIN_POWER", devices.PLANE_ATM, 3001, 352, AC, "Flight Station Air Conditioning Power")
+C_130J:defineIndicatorLight("AC_CABIN_POWER_OFF", 4102, AC, "Flight Station Air Conditioning Power Off Light", { color = "green" })
+C_130J:definePushButton("AC_CABIN_MAN", devices.PLANE_ATM, 3005, 350, AC, "Flight Station Manual Mode")
+C_130J:defineIndicatorLight("AC_CABIN_MAN_ON", 4104, AC, "Flight Station Manual Mode On Light", { color = "green" })
+C_130J:defineRockerSwitch("AC_CABIN_TEMP", devices.PLANE_ATM, 3003, 3003, 3003, 3003, 346, AC, "Flight Station Temperature", { positions = { "DECREASE", "OFF", "INCREASE" } })
+C_130J:definePushButton("AC_XF_MAN", devices.PLANE_ATM, 3007, 349, AC, "Cross Flow Valve Manual Mode")
+C_130J:defineIndicatorLight("AC_XF_MAN_ON", 4106, AC, "Cross Flow Valve Manual Mode On Light", { color = "green" })
+C_130J:defineRockerSwitch("AC_XF", devices.PLANE_ATM, 3008, 3008, 3008, 3008, 348, AC, "Cross Flow Valve", { positions = { "CLOSE", "OFF", "OPEN" } })
+
+C_130J:definePushButton("AC_CARGO_POWER", devices.PLANE_ATM, 3002, 353, AC, "Cargo Compartment Air Conditioning Power")
+C_130J:defineIndicatorLight("AC_CARGO_POWER_OFF", 4103, AC, "Cargo Compartment Air Conditioning Power Off Light", { color = "green" })
+C_130J:definePushButton("AC_CARGO_MAN", devices.PLANE_ATM, 3006, 351, AC, "Cargo Compartment Manual Mode")
+C_130J:defineIndicatorLight("AC_CARGO_MAN_ON", 4105, AC, "Cargo Compartment Manual Mode On Light", { color = "green" })
+C_130J:defineRockerSwitch("AC_CARGO_TEMP", devices.PLANE_ATM, 3004, 3004, 3004, 3004, 347, AC, "Cargo Compartment Temperature", { positions = { "DECREASE", "OFF", "INCREASE" } })
+C_130J:define3PosTumb("AC_UNDERFLOOR", devices.PLANE_ATM, 3009, 469, AC, "Underfloor Heat/Fan Switch", { positions = { "FAN", "OFF", "HEAT/FAN" } })
+
+local temps = {
+	cabin_actual = "",
+	cabin_set = "",
+	cargo_actual = "",
+	cargo_set = "",
+}
+
+C_130J:addExportHook(function()
+	temps.cabin_actual, temps.cabin_set = parse_overhead_lcd_dual_line(36, 3)
+end)
+C_130J:addExportHook(function()
+	temps.cargo_actual, temps.cargo_set = parse_overhead_lcd_dual_line(37, 3)
+end)
+
+C_130J:defineString("AC_CABIN_ACTUAL", function()
+	return temps.cabin_actual
+end, 3, AC, "Flight Station Actual Temperature")
+C_130J:defineString("AC_CABIN_SET", function()
+	return temps.cabin_set
+end, 3, AC, "Flight Station Set Temperature")
+C_130J:defineString("AC_CARGO_ACTUAL", function()
+	return temps.cargo_actual
+end, 3, AC, "Cargo Compartment Actual Temperature")
+C_130J:defineString("AC_CARGO_SET", function()
+	return temps.cargo_set
+end, 3, AC, "Cargo Compartment Set Temperature")
 
 -- Pilot HUD Panel
-local PLT_HUD_PANEL = "PLT HUD Panel"
-C_130J:definePushButton("PLT_HUD_LATCH",     devices.P_DISPLAYS, 3023, 6,    PLT_HUD_PANEL, "Pilot HUD Latch")
-C_130J:definePushButton("PLT_HUD_VIS_MODE",  devices.P_DISPLAYS, 3026, 1311, PLT_HUD_PANEL, "Pilot HUD Visual Mode")
-C_130J:definePushButton("PLT_HUD_CAT2_MODE", devices.P_DISPLAYS, 3031, 1313, PLT_HUD_PANEL, "Pilot HUD CAT2 Mode")
-C_130J:definePushButton("PLT_HUD_OFFSIDE",   devices.P_DISPLAYS, 3030, 1314, PLT_HUD_PANEL, "Pilot HUD Offside Mode")
-C_130J:definePushButton("PLT_HUD_UNCAGE",    devices.P_DISPLAYS, 3029, 1315, PLT_HUD_PANEL, "Pilot HUD Uncage Mode")
-C_130J:definePushButton("PLT_HUD_NAV_MODE",  devices.P_DISPLAYS, 3027, 1316, PLT_HUD_PANEL, "Pilot HUD Nav Mode")
-C_130J:definePushButton("PLT_HUD_TAC_MODE",  devices.P_DISPLAYS, 3028, 1318, PLT_HUD_PANEL, "Pilot HUD Tactical Mode")
-C_130J:definePushButton("PLT_HUD_BRT_AUTO",  devices.P_DISPLAYS, 3025, 1320, PLT_HUD_PANEL, "Pilot HUD Brightness - Pull for Auto")
+local PLT_HUD = "PLT HUD Panel"
 
--- Pilot AMU softkeys (around HDD1 / HDD2 displays)
-local PLT_AMU = "PLT AMU Softkeys"
--- Left AMU (around HDD1): uses P_AMU.r_key_1..8 (cmd 3011-3018), args 133-140
-C_130J:definePushButton("PLT_AMU_L_L1", devices.P_DISPLAYS, 3011, 133, PLT_AMU, "Pilot Left AMU LSK L1")
-C_130J:definePushButton("PLT_AMU_L_L2", devices.P_DISPLAYS, 3012, 134, PLT_AMU, "Pilot Left AMU LSK L2")
-C_130J:definePushButton("PLT_AMU_L_L3", devices.P_DISPLAYS, 3013, 135, PLT_AMU, "Pilot Left AMU LSK L3")
-C_130J:definePushButton("PLT_AMU_L_L4", devices.P_DISPLAYS, 3014, 136, PLT_AMU, "Pilot Left AMU LSK L4")
-C_130J:definePushButton("PLT_AMU_L_R1", devices.P_DISPLAYS, 3015, 137, PLT_AMU, "Pilot Left AMU LSK R1")
-C_130J:definePushButton("PLT_AMU_L_R2", devices.P_DISPLAYS, 3016, 138, PLT_AMU, "Pilot Left AMU LSK R2")
-C_130J:definePushButton("PLT_AMU_L_R3", devices.P_DISPLAYS, 3017, 139, PLT_AMU, "Pilot Left AMU LSK R3")
-C_130J:definePushButton("PLT_AMU_L_R4", devices.P_DISPLAYS, 3018, 140, PLT_AMU, "Pilot Left AMU LSK R4")
--- Right AMU (around HDD2): uses P_AMU.l_key_1..8 (cmd 3001-3008), args 141-148
-C_130J:definePushButton("PLT_AMU_R_L1", devices.P_DISPLAYS, 3001, 141, PLT_AMU, "Pilot Right AMU LSK L1")
-C_130J:definePushButton("PLT_AMU_R_L2", devices.P_DISPLAYS, 3002, 142, PLT_AMU, "Pilot Right AMU LSK L2")
-C_130J:definePushButton("PLT_AMU_R_L3", devices.P_DISPLAYS, 3003, 143, PLT_AMU, "Pilot Right AMU LSK L3")
-C_130J:definePushButton("PLT_AMU_R_L4", devices.P_DISPLAYS, 3004, 144, PLT_AMU, "Pilot Right AMU LSK L4")
-C_130J:definePushButton("PLT_AMU_R_R1", devices.P_DISPLAYS, 3005, 145, PLT_AMU, "Pilot Right AMU LSK R1")
-C_130J:definePushButton("PLT_AMU_R_R2", devices.P_DISPLAYS, 3006, 146, PLT_AMU, "Pilot Right AMU LSK R2")
-C_130J:definePushButton("PLT_AMU_R_R3", devices.P_DISPLAYS, 3007, 147, PLT_AMU, "Pilot Right AMU LSK R3")
-C_130J:definePushButton("PLT_AMU_R_R4", devices.P_DISPLAYS, 3008, 148, PLT_AMU, "Pilot Right AMU LSK R4")
+C_130J:definePushButton("PLT_HUD_VIS_BTN", devices.P_DISPLAYS, 3026, 1311, PLT_HUD, "Visual Mode")
+C_130J:defineIndicatorLight("PLT_HUD_VIS_ON", 4011, PLT_HUD, "Visual Mode On", { color = "green" })
+C_130J:definePushButton("PLT_HUD_BLANK1_BTN", devices.P_DISPLAYS, 3032, 1312, PLT_HUD, "Blank 1")
+C_130J:definePushButton("PLT_HUD_CAT2_BTN", devices.P_DISPLAYS, 3031, 1313, PLT_HUD, "CAT2 Mode")
+C_130J:defineIndicatorLight("PLT_HUD_CAT2_ON", 4012, PLT_HUD, "CAT2 Mode On", { color = "green" })
+C_130J:definePushButton("PLT_HUD_OS_BTN", devices.P_DISPLAYS, 3030, 1314, PLT_HUD, "Offside Mode")
+C_130J:defineIndicatorLight("PLT_HUD_OS_ON", 4013, PLT_HUD, "Offside Mode On", { color = "green" })
+C_130J:definePushButton("PLT_HUD_TACT_BTN", devices.P_DISPLAYS, 3028, 1318, PLT_HUD, "Tactical Mode")
+C_130J:defineIndicatorLight("PLT_HUD_TACT_ON", 4016, PLT_HUD, "Tactical Mode On", { color = "green" })
+C_130J:definePushButton("PLT_HUD_BLANK2_BTN", devices.P_DISPLAYS, 3033, 1317, PLT_HUD, "Blank 2")
+C_130J:definePushButton("PLT_HUD_NAV_BTN", devices.P_DISPLAYS, 3027, 1316, PLT_HUD, "Nav Mode")
+C_130J:defineIndicatorLight("PLT_HUD_NAV_ON", 4015, PLT_HUD, "Nav Mode On", { color = "green" })
+C_130J:definePushButton("PLT_HUD_UNCG_BTN", devices.P_DISPLAYS, 3029, 1315, PLT_HUD, "Uncage Mode")
+C_130J:defineIndicatorLight("PLT_HUD_UNCG_ON", 4014, PLT_HUD, "Uncage Mode On", { color = "green" })
 
--- Copilot AMU softkeys (around HDD3 / HDD4 displays)
-local CPLT_AMU = "CPLT AMU Softkeys"
--- Copilot Left AMU (around HDD3): uses C_AMU.l_key_1..8 (cmd 3011-3018), args 174-181
-C_130J:definePushButton("CPLT_AMU_L_L1", devices.C_DISPLAYS, 3011, 174, CPLT_AMU, "Copilot Left AMU LSK L1")
-C_130J:definePushButton("CPLT_AMU_L_L2", devices.C_DISPLAYS, 3012, 175, CPLT_AMU, "Copilot Left AMU LSK L2")
-C_130J:definePushButton("CPLT_AMU_L_L3", devices.C_DISPLAYS, 3013, 176, CPLT_AMU, "Copilot Left AMU LSK L3")
-C_130J:definePushButton("CPLT_AMU_L_L4", devices.C_DISPLAYS, 3014, 177, CPLT_AMU, "Copilot Left AMU LSK L4")
-C_130J:definePushButton("CPLT_AMU_L_R1", devices.C_DISPLAYS, 3015, 178, CPLT_AMU, "Copilot Left AMU LSK R1")
-C_130J:definePushButton("CPLT_AMU_L_R2", devices.C_DISPLAYS, 3016, 179, CPLT_AMU, "Copilot Left AMU LSK R2")
-C_130J:definePushButton("CPLT_AMU_L_R3", devices.C_DISPLAYS, 3017, 180, CPLT_AMU, "Copilot Left AMU LSK R3")
-C_130J:definePushButton("CPLT_AMU_L_R4", devices.C_DISPLAYS, 3018, 181, CPLT_AMU, "Copilot Left AMU LSK R4")
+C_130J:defineToggleSwitch("PLT_HUD_BRT_PULL", devices.P_DISPLAYS, 3025, 1320, PLT_HUD, "Auto HUD Brightness")
+C_130J:defineRotary("PLT_HUD_BRT", devices.P_DISPLAYS, 3024, 1319, PLT_HUD, "HUD Brightness Knob")
+
+C_130J:defineToggleSwitch("PLT_HUD_LATCH", devices.P_DISPLAYS, 3023, 6, PLT_HUD, "HUD Latch")
 
 -- Copilot HUD Panel
+local CPLT_HUD = "CPLT HUD Panel"
+
+C_130J:definePushButton("CPLT_HUD_VIS_BTN", devices.C_DISPLAYS, 3026, 1322, CPLT_HUD, "Visual Mode")
+C_130J:defineIndicatorLight("CPLT_HUD_VIS_ON", 4017, CPLT_HUD, "Visual Mode On", { color = "green" })
+C_130J:definePushButton("CPLT_HUD_BLANK1_BTN", devices.C_DISPLAYS, 3032, 1323, CPLT_HUD, "Blank 1")
+C_130J:definePushButton("CPLT_HUD_CAT2_BTN", devices.C_DISPLAYS, 3031, 1324, CPLT_HUD, "CAT2 Mode")
+C_130J:defineIndicatorLight("CPLT_HUD_CAT2_ON", 4018, CPLT_HUD, "CAT2 Mode On", { color = "green" })
+C_130J:definePushButton("CPLT_HUD_OS_BTN", devices.C_DISPLAYS, 3030, 1325, CPLT_HUD, "Offside Mode")
+C_130J:defineIndicatorLight("CPLT_HUD_OS_ON", 4019, CPLT_HUD, "Offside Mode On", { color = "green" })
+C_130J:definePushButton("CPLT_HUD_TACT_BTN", devices.C_DISPLAYS, 3028, 1329, CPLT_HUD, "Tactical Mode")
+C_130J:defineIndicatorLight("CPLT_HUD_TACT_ON", 4022, CPLT_HUD, "Tactical Mode On", { color = "green" })
+C_130J:definePushButton("CPLT_HUD_BLANK2_BTN", devices.C_DISPLAYS, 3033, 1328, CPLT_HUD, "Blank 2")
+C_130J:definePushButton("CPLT_HUD_NAV_BTN", devices.C_DISPLAYS, 3027, 1327, CPLT_HUD, "Nav Mode")
+C_130J:defineIndicatorLight("CPLT_HUD_NAV_ON", 4021, CPLT_HUD, "Nav Mode On", { color = "green" })
+C_130J:definePushButton("CPLT_HUD_UNCG_BTN", devices.C_DISPLAYS, 3029, 1326, CPLT_HUD, "Uncage Mode")
+C_130J:defineIndicatorLight("CPLT_HUD_UNCG_ON", 4020, CPLT_HUD, "Uncage Mode On", { color = "green" })
+
+C_130J:defineToggleSwitch("CPLT_HUD_BRT_PULL", devices.C_DISPLAYS, 3025, 1330, CPLT_HUD, "Auto HUD Brightness")
+C_130J:defineRotary("CPLT_HUD_BRT", devices.C_DISPLAYS, 3024, 1331, CPLT_HUD, "HUD Brightness Knob")
+
+C_130J:defineToggleSwitch("CPLT_HUD_LATCH", devices.C_DISPLAYS, 3023, 7, CPLT_HUD, "HUD Latch")
 
 -- Wipers/ELT/Emergency Exit Lights Extinguish Panel
+local WIPER_ELT_EXIT_LIGHT = "Wipers/ELT/Emergency Exit Lights Extinguish Panel"
+
+C_130J:defineToggleSwitch("ELT_ON", devices.MECH_INTERFACE, 3106, 149, WIPER_ELT_EXIT_LIGHT, "ELT Switch", { positions = { "ARM", "ON" } })
+C_130J:definePushButton("EMER_EXIT_LIGHT_EXTINGUISH", devices.ENGINE_APU_CTRL, 3028, 377, WIPER_ELT_EXIT_LIGHT, "Emergency Exit Light Extinguish Button")
+-- SetState causes weird behavior and is not functional as of right now
+C_130J:defineTumb("WIPER_MODE", devices.ENGINE_APU_CTRL, 3016, 323, 0.2, { -0.2, 0.8 }, nil, false, WIPER_ELT_EXIT_LIGHT, "Windshield Wiper Control Switch", { positions = { "PARK", "OFF", "SLOW", "2", "3", "FAST" } })
 
 -- APU Panel
+local APU = "APU Panel"
+
+C_130J:defineToggleSwitch("APU_ALARM", devices.ENGINE_APU_CTRL, 3027, 425, APU, "APU Alarm")
+C_130J:defineEngineStartSwitch("APU_START", devices.ENGINE_APU_CTRL, 3015, 322, 0.5, { 0, 1 }, 3, APU, "APU Start Switch", { positions = { "STOP", "RUN", "START" } })
+C_130J:defineIndicatorLight("APU_START_LIGHT", 4027, APU, "APU Start Light", { color = "green" })
+
+C_130J:defineToggleSwitch("APU_FIRE_HANDLE_PULL", devices.ENGINE_APU_CTRL, 3026, 324, APU, "APU Fire Handle (Push/Pull)")
+C_130J:define3PosTumb("APU_FIRE_HANDLE_ROTATE", devices.ENGINE_APU_CTRL, 3021, 325, APU, "APU Fire Handle (Rotate)", { positions = { "1", "OFF", "2" } })
+C_130J:defineGatedIndicatorLight("APU_FIRE", 4135, 1, nil, APU, "APU Fire Light", { color = "red" }) -- light comes on at exactly 1
+
+C_130J:defineString("APU_EGT", function()
+	return parse_overhead_lcd_line(34, { 3 })
+end, 3, APU, "EGT")
+C_130J:defineString("APU_RPM", function()
+	return parse_overhead_lcd_line(33, { 3 })
+end, 3, APU, "RPM (%)")
 
 -- Engine Start Panel
+local ENGINE_START = "Engine Start Panel"
 
--- Fire Panel
+-- the step/range/positions for these engine start switches are a little weird, but they match what is in the dcs lua files, and they work
+C_130J:defineEngineStartSwitch("ENGINE_START_1", devices.ENGINE_APU_CTRL, 3007, 310, 0.5, { -0.33, 1 }, 4, ENGINE_START, "Engine 1 Start Switch", { positions = { "MOTOR", "STOP", "RUN", "START" } })
+C_130J:defineIndicatorLight("ENGINE_START_1_LIGHT", 4023, ENGINE_START, "Engine 1 Start Light", { color = "green" })
+C_130J:defineEngineStartSwitch("ENGINE_START_2", devices.ENGINE_APU_CTRL, 3008, 311, 0.5, { -0.33, 1 }, 4, ENGINE_START, "Engine 2 Start Switch", { positions = { "MOTOR", "STOP", "RUN", "START" } })
+C_130J:defineIndicatorLight("ENGINE_START_2_LIGHT", 4024, ENGINE_START, "Engine 2 Start Light", { color = "green" })
+C_130J:defineEngineStartSwitch("ENGINE_START_3", devices.ENGINE_APU_CTRL, 3009, 312, 0.5, { -0.33, 1 }, 4, ENGINE_START, "Engine 3 Start Switch", { positions = { "MOTOR", "STOP", "RUN", "START" } })
+C_130J:defineIndicatorLight("ENGINE_START_3_LIGHT", 4025, ENGINE_START, "Engine 3 Start Light", { color = "green" })
+C_130J:defineEngineStartSwitch("ENGINE_START_4", devices.ENGINE_APU_CTRL, 3010, 313, 0.5, { -0.33, 1 }, 4, ENGINE_START, "Engine 4 Start Switch", { positions = { "MOTOR", "STOP", "RUN", "START" } })
+C_130J:defineIndicatorLight("ENGINE_START_4_LIGHT", 4026, ENGINE_START, "Engine 4 Start Light", { color = "green" })
+
+C_130J:defineToggleSwitch("FIRE_ENGINE_1_HANDLE_PULL", devices.ENGINE_APU_CTRL, 3022, 314, ENGINE_START, "Engine 1 Fire Handle (Push/Pull)")
+C_130J:define3PosTumb("FIRE_ENGINE_1_HANDLE_ROTATE", devices.ENGINE_APU_CTRL, 3017, 315, ENGINE_START, "Engine 1 Fire Handle (Rotate)", { positions = { "1", "OFF", "2" } })
+C_130J:defineGatedIndicatorLight("FIRE_ENGINE_1", 4131, 1, nil, ENGINE_START, "Engine 1 Fire Light", { color = "red" }) -- light comes on at exactly 1
+C_130J:defineToggleSwitch("FIRE_ENGINE_2_HANDLE_PULL", devices.ENGINE_APU_CTRL, 3023, 316, ENGINE_START, "Engine 2 Fire Handle (Push/Pull)")
+C_130J:define3PosTumb("FIRE_ENGINE_2_HANDLE_ROTATE", devices.ENGINE_APU_CTRL, 3018, 317, ENGINE_START, "Engine 2 Fire Handle (Rotate)", { positions = { "1", "OFF", "2" } })
+C_130J:defineGatedIndicatorLight("FIRE_ENGINE_2", 4132, 1, nil, ENGINE_START, "Engine 2 Fire Light", { color = "red" }) -- light comes on at exactly 1
+C_130J:defineToggleSwitch("FIRE_ENGINE_3_HANDLE_PULL", devices.ENGINE_APU_CTRL, 3024, 318, ENGINE_START, "Engine 3 Fire Handle (Push/Pull)")
+C_130J:define3PosTumb("FIRE_ENGINE_3_HANDLE_ROTATE", devices.ENGINE_APU_CTRL, 3019, 319, ENGINE_START, "Engine 3 Fire Handle (Rotate)", { positions = { "1", "OFF", "2" } })
+C_130J:defineGatedIndicatorLight("FIRE_ENGINE_3", 4133, 1, nil, ENGINE_START, "Engine 3 Fire Light", { color = "red" }) -- light comes on at exactly 1
+C_130J:defineToggleSwitch("FIRE_ENGINE_4_HANDLE_PULL", devices.ENGINE_APU_CTRL, 3025, 320, ENGINE_START, "Engine 4 Fire Handle (Push/Pull)")
+C_130J:define3PosTumb("FIRE_ENGINE_4_HANDLE_ROTATE", devices.ENGINE_APU_CTRL, 3020, 321, ENGINE_START, "Engine 4 Fire Handle (Rotate)", { positions = { "1", "OFF", "2" } })
+C_130J:defineGatedIndicatorLight("FIRE_ENGINE_4", 4134, 1, nil, ENGINE_START, "Engine 4 Fire Light", { color = "red" }) -- light comes on at exactly 1
 
 -- FADEC/Prop Control/Prop Sync/ATCS Panel
+local FADEC = "FADEC/Prop Control/Prop Sync/ATCS Panel"
+
+C_130J:defineToggleSwitchManualRange("FADEC_1_GUARD", devices.ENGINE_APU_CTRL, 3035, 328, { 1, 0 }, FADEC, "Engine 1 FADEC Switch Guard", { positions = CommonPositions.COVER })
+C_130J:defineToggleSwitchManualRange("FADEC_2_GUARD", devices.ENGINE_APU_CTRL, 3036, 329, { 1, 0 }, FADEC, "Engine 2 FADEC Switch Guard", { positions = CommonPositions.COVER })
+C_130J:defineToggleSwitchManualRange("FADEC_3_GUARD", devices.ENGINE_APU_CTRL, 3037, 330, { 1, 0 }, FADEC, "Engine 3 FADEC Switch Guard", { positions = CommonPositions.COVER })
+C_130J:defineToggleSwitchManualRange("FADEC_4_GUARD", devices.ENGINE_APU_CTRL, 3038, 331, { 1, 0 }, FADEC, "Engine 4 FADEC Switch Guard", { positions = CommonPositions.COVER })
+
+local FADEC_ATTRIBUTES = { positions = { "RESET", "NORM", "ALT" } }
+
+C_130J:define3PosTumb("FADEC_1_MODE", devices.ENGINE_APU_CTRL, 3039, 412, FADEC, "Engine 1 FADEC Switch", FADEC_ATTRIBUTES)
+C_130J:define3PosTumb("FADEC_2_MODE", devices.ENGINE_APU_CTRL, 3040, 413, FADEC, "Engine 2 FADEC Switch", FADEC_ATTRIBUTES)
+C_130J:define3PosTumb("FADEC_3_MODE", devices.ENGINE_APU_CTRL, 3041, 414, FADEC, "Engine 3 FADEC Switch", FADEC_ATTRIBUTES)
+C_130J:define3PosTumb("FADEC_4_MODE", devices.ENGINE_APU_CTRL, 3042, 415, FADEC, "Engine 4 FADEC Switch", FADEC_ATTRIBUTES)
+
+local PROP_CONTROL_ATTRIBUTES = { positions = { "UNFEATHER", "NORMAL", "FEATHER" } }
+
+C_130J:define3PosTumb("PROP_CONTROL_1", devices.ENGINE_APU_CTRL, 3043, 372, FADEC, "Propeller 1 Control Switch", PROP_CONTROL_ATTRIBUTES)
+C_130J:define3PosTumb("PROP_CONTROL_2", devices.ENGINE_APU_CTRL, 3044, 373, FADEC, "Propeller 2 Control Switch", PROP_CONTROL_ATTRIBUTES)
+C_130J:define3PosTumb("PROP_CONTROL_3", devices.ENGINE_APU_CTRL, 3045, 374, FADEC, "Propeller 3 Control Switch", PROP_CONTROL_ATTRIBUTES)
+C_130J:define3PosTumb("PROP_CONTROL_4", devices.ENGINE_APU_CTRL, 3046, 375, FADEC, "Propeller 4 Control Switch", PROP_CONTROL_ATTRIBUTES)
+
+C_130J:defineToggleSwitch("ATCS_GUARD", devices.ENGINE_APU_CTRL, 3047, 327, FADEC, "ATCS Switch Guard", { positions = CommonPositions.COVER })
+C_130J:defineToggleSwitchManualRange("ATCS", devices.ENGINE_APU_CTRL, 3049, 416, { 1, 0 }, FADEC, "ATCS")
+C_130J:defineToggleSwitchManualRange("PROP_SYNC", devices.ENGINE_APU_CTRL, 3048, 376, { 1, 0 }, FADEC, "Prop Sync Switch")
 
 -- Exterior Lighting Panel
+local EXT_LIGHT_PANEL = "Exterior Lighting Panel"
+
+C_130J:definePotentiometer("EXT_LIGHT_BRIGHTNESS", devices.LIGHTING_PANELS, 3016, 424, { 0, 1 }, EXT_LIGHT_PANEL, "Covert/Formation Light Brightness Knob")
+
+C_130J:defineToggleSwitch("EXT_LIGHT_MASTER", devices.LIGHTING_PANELS, 3008, 421, EXT_LIGHT_PANEL, "Exterior Lighting Master Switch", { positions = { "NORM", "COVERT" } })
+C_130J:define3PosTumb("EXT_LIGHT_NAV_MODE", devices.LIGHTING_PANELS, 3009, 422, EXT_LIGHT_PANEL, "Navigation Light Mode Switch", { positions = { "STEADY", "OFF", "FLASH" } })
+C_130J:defineToggleSwitch("EXT_LIGHT_NAV_BRIGHTNESS", devices.LIGHTING_PANELS, 3010, 423, EXT_LIGHT_PANEL, "Navigation Light Brightness Switch", { positions = { "BRIGHT", "DIM" } })
+
+C_130J:define3PosTumb("EXT_LIGHT_STROBE_TOP_MODE", devices.LIGHTING_PANELS, 3012, 418, EXT_LIGHT_PANEL, "Top Strobe Mode Switch", { positions = { "WHT", "OFF", "RED" } })
+C_130J:define3PosTumb("EXT_LIGHT_STROBE_BOT_MODE", devices.LIGHTING_PANELS, 3013, 419, EXT_LIGHT_PANEL, "Bottom Strobe Mode Switch", { positions = { "WHT", "OFF", "RED" } })
+C_130J:defineToggleSwitch("EXT_LIGHT_STROBE_BOT_TEST", devices.LIGHTING_PANELS, 3014, 420, EXT_LIGHT_PANEL, "Bottom Strobe Test Switch")
+
+C_130J:defineToggleSwitch("EXT_LIGHT_LEADING_EDGE", devices.LIGHTING_PANELS, 3015, 417, EXT_LIGHT_PANEL, "Leading Edge Light Switch")
 
 -- Ice Protection Panel
+local ICE = "Ice Protection Panel"
+
+local ICE_PROTECTION_ATTRIBUTES = { positions = { "ON", "AUTO", "OFF" } }
+
+C_130J:define3PosTumb("ICE_PROP_1", devices.ENGINE_APU_CTRL, 3058, 386, ICE, "Propeller 1 Ice Protection Switch", ICE_PROTECTION_ATTRIBUTES)
+C_130J:define3PosTumb("ICE_PROP_2", devices.ENGINE_APU_CTRL, 3059, 387, ICE, "Propeller 2 Ice Protection Switch", ICE_PROTECTION_ATTRIBUTES)
+C_130J:define3PosTumb("ICE_PROP_3", devices.ENGINE_APU_CTRL, 3060, 388, ICE, "Propeller 3 Ice Protection Switch", ICE_PROTECTION_ATTRIBUTES)
+C_130J:define3PosTumb("ICE_PROP_4", devices.ENGINE_APU_CTRL, 3061, 389, ICE, "Propeller 4 Ice Protection Switch", ICE_PROTECTION_ATTRIBUTES)
+C_130J:define3PosTumb("ICE_ENG", devices.ENGINE_APU_CTRL, 3062, 385, ICE, "Engine Ice Protection Switch", ICE_PROTECTION_ATTRIBUTES)
+C_130J:define3PosTumb("ICE_WING_EMP", devices.ENGINE_APU_CTRL, 3063, 384, ICE, "Wing/Empennage Ice Protection Switch", ICE_PROTECTION_ATTRIBUTES)
+
+C_130J:defineToggleSwitchManualRange("ICE_ANTI_DE_ICE", devices.ENGINE_APU_CTRL, 3064, 382, { 1, 0 }, ICE, "Anti-Ice/De-Ice Switch", { positions = { "ANTI-ICE", "DE-ICE" } })
+C_130J:defineToggleSwitchManualRange("ICE_PLT_PITOT", devices.ENGINE_APU_CTRL, 3065, 378, { 1, 0 }, ICE, "Pilot Pitot Heat Switch")
+C_130J:defineToggleSwitchManualRange("ICE_CPLT_PITOT", devices.ENGINE_APU_CTRL, 3066, 379, { 1, 0 }, ICE, "Copilot Pitot Heat Switch")
+C_130J:defineToggleSwitchManualRange("ICE_NESA_C", devices.ENGINE_APU_CTRL, 3067, 380, { 1, 0 }, ICE, "Center NESA Heat Switch")
+C_130J:defineToggleSwitchManualRange("ICE_NESA_S", devices.ENGINE_APU_CTRL, 3068, 381, { 1, 0 }, ICE, "Side/Lower NESA Heat Switch")
 
 -- Bleed Air Panel
+local BLEED_AIR = "Bleed Air Panel"
 
--- Emergency Exit Lights Extinguish
+C_130J:definePushButton("BLEED_AIR_APU", devices.ENGINE_APU_CTRL, 3050, 355, BLEED_AIR, "APU Bleed Air Button")
+C_130J:defineIndicatorLight("BLEED_AIR_APU_OPEN", 4108, BLEED_AIR, "APU Bleed Air Open Light", { color = "green" })
+
+local BLEED_AIR_ATTRIBUTES = { positions = { "OPEN", "AUTO", "CLOSE" } }
+
+C_130J:define3PosTumb("BLEED_AIR_ISO_L", devices.ENGINE_APU_CTRL, 3051, 394, BLEED_AIR, "Left Wing Isolation Valve", BLEED_AIR_ATTRIBUTES)
+C_130J:define3PosTumb("BLEED_AIR_DIVIDER", devices.ENGINE_APU_CTRL, 3052, 395, BLEED_AIR, "Divider Valve", BLEED_AIR_ATTRIBUTES)
+C_130J:define3PosTumb("BLEED_AIR_ISO_R", devices.ENGINE_APU_CTRL, 3053, 396, BLEED_AIR, "Right Wing Isolation Valve", BLEED_AIR_ATTRIBUTES)
+C_130J:define3PosTumb("BLEED_AIR_SHUTOFF_ENGINE_1", devices.ENGINE_APU_CTRL, 3054, 390, BLEED_AIR, "Engine 1 Nacelle Shutoff Valve", BLEED_AIR_ATTRIBUTES)
+C_130J:define3PosTumb("BLEED_AIR_SHUTOFF_ENGINE_2", devices.ENGINE_APU_CTRL, 3055, 391, BLEED_AIR, "Engine 2 Nacelle Shutoff Valve", BLEED_AIR_ATTRIBUTES)
+C_130J:define3PosTumb("BLEED_AIR_SHUTOFF_ENGINE_3", devices.ENGINE_APU_CTRL, 3056, 392, BLEED_AIR, "Engine 3 Nacelle Shutoff Valve", BLEED_AIR_ATTRIBUTES)
+C_130J:define3PosTumb("BLEED_AIR_SHUTOFF_ENGINE_4", devices.ENGINE_APU_CTRL, 3057, 393, BLEED_AIR, "Engine 4 Nacelle Shutoff Valve", BLEED_AIR_ATTRIBUTES)
+
+C_130J:defineString("BLEED_AIR_PRESSURE", function()
+	return parse_overhead_lcd_line(35, { 3 })
+end, 3, BLEED_AIR, "Bleed Air Pressure Indicator")
 
 -- Standby Magnetic Compass
+local COMPASS = "Standby Magnetic Compass"
 
--- Standby Attitude / Altimeter
-local STANDBY_INSTR = "Standby Instruments"
-C_130J:definePushButton("STBY_ADI_CAGE", devices.MECH_INTERFACE, 3104, 128, STANDBY_INSTR, "Standby Attitude Indicator - Pull to Cage")
-C_130J:defineRotary("STBY_ADI_PITCH_BIAS", devices.MECH_INTERFACE, 3103, 127, STANDBY_INSTR, "Standby Attitude Indicator Pitch Bias Adjust")
-C_130J:defineRotary("STBY_BARO_KNB", devices.MECH_INTERFACE, 3102, 125, STANDBY_INSTR, "Standby Altimeter Baro Adjust")
+-- compass does not pitch or roll
+C_130J:defineFloat("COMPASS_HEADING", 17, { -1, 1 }, COMPASS, "Compass Heading")
 
 -- Overhead Console END
 
@@ -1019,16 +1607,16 @@ C_130J:defineFloat("AUG_CNI_EXEC_LED", 3394, { 0, 1 }, AUG_CNI_MU, "Aug Crew CNI
 
 -- Pilot Remote Heading and Course Selector
 local PLT_HEAD_COURSE = "PLT Remote Heading and Course Selector"
-C_130J:defineRotary("PLT_HEADING_ADJUST", devices.PILOT_CPT_INTERFACE, 3001, 490, PLT_HEAD_COURSE, "Pilot Heading Adjust")
+C_130J:defineRotaryWithRange("PLT_HEADING_ADJUST", devices.PILOT_CPT_INTERFACE, 3001, 490, { -1, 1 }, PLT_HEAD_COURSE, "Pilot Heading Adjust")
 C_130J:defineToggleSwitch("PLT_HEADING_SYNC", devices.PILOT_CPT_INTERFACE, 3003, 562, PLT_HEAD_COURSE, "Pilot Heading Push to Sync")
-C_130J:defineRotary("PLT_COURSE_ADJUST", devices.PILOT_CPT_INTERFACE, 3002, 491, PLT_HEAD_COURSE, "Pilot Course Adjust")
+C_130J:defineRotaryWithRange("PLT_COURSE_ADJUST", devices.PILOT_CPT_INTERFACE, 3002, 491, { -1, 1 }, PLT_HEAD_COURSE, "Pilot Course Adjust")
 C_130J:defineToggleSwitch("PLT_COURSE_SYNC", devices.PILOT_CPT_INTERFACE, 3004, 563, PLT_HEAD_COURSE, "Pilot Course Push to Sync")
 
 -- Copilot Remote Heading and Course Selector
 local CPLT_HEAD_COURSE = "CPLT Remote Heading and Course Selector"
-C_130J:defineRotary("CPLT_HEADING_ADJUST", devices.COPILOT_CPT_INTERFACE, 3001, 492, CPLT_HEAD_COURSE, "Copilot Heading Adjust")
+C_130J:defineRotaryWithRange("CPLT_HEADING_ADJUST", devices.COPILOT_CPT_INTERFACE, 3001, 492, { -1, 1 }, CPLT_HEAD_COURSE, "Copilot Heading Adjust")
 C_130J:defineToggleSwitch("CPLT_HEADING_SYNC", devices.COPILOT_CPT_INTERFACE, 3003, 564, CPLT_HEAD_COURSE, "Copilot Heading Push to Sync")
-C_130J:defineRotary("CPLT_COURSE_ADJUST", devices.COPILOT_CPT_INTERFACE, 3002, 493, CPLT_HEAD_COURSE, "Copilot Course Adjust")
+C_130J:defineRotaryWithRange("CPLT_COURSE_ADJUST", devices.COPILOT_CPT_INTERFACE, 3002, 493, { -1, 1 }, CPLT_HEAD_COURSE, "Copilot Course Adjust")
 C_130J:defineToggleSwitch("CPLT_COURSE_SYNC", devices.COPILOT_CPT_INTERFACE, 3004, 565, CPLT_HEAD_COURSE, "Copilot Course Push to Sync")
 
 -- Throttle Quadrant
@@ -1134,42 +1722,339 @@ C_130J:definePushButton("AFCS_LATERAL_AXIS_SWITCH", devices.AP_INTERFACE, 3014, 
 C_130J:defineIndicatorLight("AFCS_PITCH_AXIS_SWITCH_LED", 4089, AFCS_PANEL, "AFCS Pitch Axis Deselect Light", { color = "Green" })
 C_130J:defineIndicatorLight("AFCS_LATERAL_AXIS_SWITCH_LED", 4090, AFCS_PANEL, "AFCS Lateral Axis Deselect Light", { color = "Green" })
 
--- ARC-210 (Pilot Radio Control Unit)
-local ARC_210 = "ARC-210 Radio Control Unit"
--- Operational Mode Switch: 7 positions (OFF, TR+G, TR, ADF, CHG PRST, TEST, ZEROIZE)
-C_130J:defineMultipositionSwitch("ARC210_OP_MODE", devices.VOLUME_MANAGER, 3165, 543, 7, 1/6, ARC_210, "ARC-210 Operational Mode Switch")
--- Squelch (2 positions: OFF=-1, ON=1)  -- use defineMultipositionSwitch to cover the {-1,1} range
-C_130J:defineMultipositionSwitch("ARC210_SQL", devices.VOLUME_MANAGER, 3159, 532, 2, 2, ARC_210, "ARC-210 Squelch Switch")
--- Channel selector + frequency knobs (for future use)
-C_130J:defineMultipositionSwitch("ARC210_FREQ_MODE", devices.VOLUME_MANAGER, 3167, 545, 7, 1/6, ARC_210, "ARC-210 Frequency Mode Switch")
+-- ARC-210
+local ARC_210 = "ARC-210"
+C_130J:definePushButton("ARC210_TOD_SND", devices.VOLUME_MANAGER, 3148, 551, ARC_210, "TOD SND Key")
+C_130J:definePushButton("ARC210_TOD_RCV", devices.VOLUME_MANAGER, 3149, 552, ARC_210, "TOD RCV Key")
+C_130J:definePushButton("ARC210_GPS", devices.VOLUME_MANAGER, 3150, 553, ARC_210, "GPS Key")
+C_130J:definePushButton("ARC210_RT_SELECT", devices.VOLUME_MANAGER, 3151, 554, ARC_210, "RT SELECT Key")
+C_130J:definePushButton("ARC210_LSK_1", devices.VOLUME_MANAGER, 3145, 550, ARC_210, "LSK 1")
+C_130J:definePushButton("ARC210_LSK_2", devices.VOLUME_MANAGER, 3146, 549, ARC_210, "LSK 2")
+C_130J:definePushButton("ARC210_LSK_3", devices.VOLUME_MANAGER, 3147, 548, ARC_210, "LSK 3")
+C_130J:defineToggleSwitchManualRange("ARC210_SQUELCH_SWITCH", devices.VOLUME_MANAGER, 3159, 532, { -2, 2 }, ARC_210, "Squelch Switch")
+C_130J:definePushButton("ARC210_MENU_TIME", devices.VOLUME_MANAGER, 3152, 533, ARC_210, "MENU or TIME Key")
+C_130J:definePushButton("ARC210_AM_FM", devices.VOLUME_MANAGER, 3154, 534, ARC_210, "AM/FM Key")
+C_130J:definePushButton("ARC210_XMT_REC_SEND", devices.VOLUME_MANAGER, 3153, 535, ARC_210, "XMT/REC or SEND Key")
+C_130J:definePushButton("ARC210_OFFSET_RCV", devices.VOLUME_MANAGER, 3155, 536, ARC_210, "OFFSET or RCV Key")
+C_130J:definePushButton("ARC210_BRIGHT_INC", devices.VOLUME_MANAGER, 3156, 547, ARC_210, "Brightness Increase")
+C_130J:definePushButton("ARC210_BRIGHT_DEC", devices.VOLUME_MANAGER, 3157, 546, ARC_210, "Brightness Decrease")
+C_130J:defineMultipositionSwitch("ARC210_100MHZ", devices.VOLUME_MANAGER, 3160, 542, 4, 1 / 3, ARC_210, "100 MHz Selector")
+C_130J:defineMultipositionSwitch("ARC210_10MHZ", devices.VOLUME_MANAGER, 3161, 541, 10, 1 / 9, ARC_210, "10 MHz Selector")
+C_130J:defineMultipositionSwitch("ARC210_1MHZ", devices.VOLUME_MANAGER, 3162, 540, 10, 1 / 9, ARC_210, "1 MHz Selector")
+C_130J:defineMultipositionSwitch("ARC210_100KHZ", devices.VOLUME_MANAGER, 3163, 539, 10, 1 / 9, ARC_210, "100 KHz Selector")
+C_130J:defineMultipositionSwitch("ARC210_25KHZ", devices.VOLUME_MANAGER, 3164, 538, 4, 1 / 3, ARC_210, "25 KHz Selector")
+C_130J:definePushButton("ARC210_ENTER", devices.VOLUME_MANAGER, 3158, 537, ARC_210, "ENTER Key")
+C_130J:defineMultipositionSwitch("ARC210_OPER_MODE", devices.VOLUME_MANAGER, 3165, 543, 7, 1 / 6, ARC_210, "Operational Mode Switch", { positions = { "OFF", "TR+G", "TR", "ADF", "CHG PRST", "TEST", "ZERO (PULL)" } })
+C_130J:defineRotary("ARC210_CHNL_KNOB", devices.VOLUME_MANAGER, 3166, 544, ARC_210, "Channel Selector")
+C_130J:defineMultipositionSwitch("ARC210_FREQ_MODE", devices.VOLUME_MANAGER, 3167, 545, 7, 1 / 6, ARC_210, "Frequency Mode Switch", { positions = { "ECCM MASTER", "ECCM", "PRST", "MAN", "MAR", "243", "I2I (PULL)" } })
 
 -- Center Console END
 
 -- Nosewheel Steering
+local NOSEWHEEL = "Nosewheel Steering"
 
--- Pilot Yoke
+C_130J:defineFloat("NOSEWHEEL_STEERING_WHEEL", 12, { -1, 1 }, NOSEWHEEL, "Steering Wheel")
 
--- Copilot Yoke
+-- Yoke
+local YOKE = "Yoke (PLT/CPLT)"
+
+C_130J:defineFloat("YOKE_PITCH", 1, { -1, 1 }, YOKE, "Yoke Pitch")
+C_130J:defineFloat("YOKE_ROLL", 2, { -1, 1 }, YOKE, "Yoke Roll")
+C_130J:defineInputOnlyPushButton("YOKE_PFD_RESET", devices.PILOT_CPT_INTERFACE, 3013, YOKE, "PFD Reset Button")
+C_130J:defineInputOnlyPushButton("YOKE_AFCS_DISCONNECT", devices.AP_INTERFACE, 3017, YOKE, "Autopilot Disconnect Button")
+C_130J:defineInputOnlyPushButton("YOKE_PITCH_SYNC", devices.AP_INTERFACE, 3018, YOKE, "Pitch Sync Button")
+C_130J:defineInputOnlyPushButton("YOKE_COUNTERMEASURE", devices.CMS_MGR, 3002, YOKE, "Countermeasure Dispense Button")
+C_130J:defineInputOnlyPushButton("YOKE_GOAROUND", devices.PILOT_CPT_INTERFACE, 3006, YOKE, "Go-Around Button")
+C_130J:defineInputOnlyPushButton("YOKE_HUD_DECLUTTER", devices.PILOT_CPT_INTERFACE, 3016, YOKE, "HUD Declutter")
+C_130J:defineInputOnlyPushButtonWithValues("YOKE_INTERCOM_SWITCH", devices.VOLUME_MANAGER, 3015, -1, 0, YOKE, "Radio Switch (Intercom)")
+C_130J:defineInputOnlyPushButtonWithValues("YOKE_RADIO_SWITCH", devices.VOLUME_MANAGER, 3015, 1, 0, YOKE, "Radio Switch (Radio)")
+C_130J:defineInputOnlyPushButtonWithValues("YOKE_HUSH", devices.MECH_INTERFACE, 3093, 1, 0, YOKE, "Hush/Stopwatch Switch (Hush)")
+C_130J:defineInputOnlyPushButtonWithValues("YOKE_STOPWATCH", devices.PILOT_CPT_INTERFACE, 3005, -1, 0, YOKE, "Hush/Stopwatch Switch (Stopwatch)")
+-- Cursor controls are shared with the Cursor Control Panel
+C_130J:defineInputOnlyPushButton("YOKE_CURSOR_UP", devices.CURSOR, 3007, YOKE, "Cursor Control Switch UP")
+C_130J:defineInputOnlyPushButton("YOKE_CURSOR_DOWN", devices.CURSOR, 3008, YOKE, "Cursor Control Switch DOWN")
+C_130J:defineInputOnlyPushButton("YOKE_CURSOR_RIGHT", devices.CURSOR, 3009, YOKE, "Cursor Control Switch RIGHT")
+C_130J:defineInputOnlyPushButton("YOKE_CURSOR_LEFT", devices.CURSOR, 3010, YOKE, "Cursor Control Switch LEFT")
 
 -- Flight Station Forward END
 
--- Loadmaster Station
+-- Loadmaster Station START
 
--- TODO: panel, circuit breakers, crew door handle
+-- Loadmaster Station Controls
+local LOADMASTER_CTRLS = "Loadmaster Controls"
 
--- Loadmaster Station End
+C_130J:defineC130Springloaded_3PosTumb("LOADMASTER_RAMP_DOOR", devices.MECH_INTERFACE, 3097, 2101, LOADMASTER_CTRLS, "Ramp/Door Control Switch", { positions = { "CLOSE", "OFF", "OPEN" } })
+C_130J:defineToggleSwitch("LOADMASTER_COVER", devices.CARGO_HANDLER, 3062, 2100, LOADMASTER_CTRLS, "Cover")
+
+-- Loadmaster Station END
+
+-- Galley
+
+local GALLEY = "Galley"
+
+C_130J:defineInputOnlyPushButton("GALLEY_MICROWAVE_START", devices.GALLEY, 3012, GALLEY, "Microwave Start")
+C_130J:reserveIntValue(1)
+C_130J:defineInputOnlyPushButton("GALLEY_MICROWAVE_CLEAR", devices.GALLEY, 3013, GALLEY, "Microwave Clear")
+C_130J:reserveIntValue(1)
+C_130J:defineInputOnlyPushButton("GALLEY_MICROWAVE_1", devices.GALLEY, 3015, GALLEY, "Microwave 1")
+C_130J:reserveIntValue(1)
+C_130J:defineInputOnlyPushButton("GALLEY_MICROWAVE_2", devices.GALLEY, 3016, GALLEY, "Microwave 2")
+C_130J:reserveIntValue(1)
+C_130J:defineInputOnlyPushButton("GALLEY_MICROWAVE_3", devices.GALLEY, 3017, GALLEY, "Microwave 3")
+C_130J:reserveIntValue(1)
+C_130J:defineInputOnlyPushButton("GALLEY_MICROWAVE_4", devices.GALLEY, 3018, GALLEY, "Microwave 4")
+C_130J:reserveIntValue(1)
+C_130J:defineInputOnlyPushButton("GALLEY_MICROWAVE_5", devices.GALLEY, 3019, GALLEY, "Microwave 5")
+C_130J:reserveIntValue(1)
+C_130J:defineInputOnlyPushButton("GALLEY_MICROWAVE_6", devices.GALLEY, 3020, GALLEY, "Microwave 6")
+C_130J:reserveIntValue(1)
+C_130J:defineInputOnlyPushButton("GALLEY_MICROWAVE_7", devices.GALLEY, 3021, GALLEY, "Microwave 7")
+C_130J:reserveIntValue(1)
+C_130J:defineInputOnlyPushButton("GALLEY_MICROWAVE_8", devices.GALLEY, 3022, GALLEY, "Microwave 8")
+C_130J:reserveIntValue(1)
+C_130J:defineInputOnlyPushButton("GALLEY_MICROWAVE_9", devices.GALLEY, 3023, GALLEY, "Microwave 9")
+C_130J:reserveIntValue(1)
+C_130J:defineInputOnlyPushButton("GALLEY_MICROWAVE_POPCORN", devices.GALLEY, 3024, GALLEY, "Microwave Popcorn")
+C_130J:reserveIntValue(1)
+C_130J:defineInputOnlyPushButton("GALLEY_MICROWAVE_0", devices.GALLEY, 3014, GALLEY, "Microwave 0")
+C_130J:reserveIntValue(1)
+C_130J:defineInputOnlyPushButton("GALLEY_MICROWAVE_MIN", devices.GALLEY, 3025, GALLEY, "Microwave Min")
+C_130J:reserveIntValue(1)
+C_130J:defineToggleSwitch("GALLEY_MICROWAVE_LATCH", devices.J_WORLD, 3010, 1677, GALLEY, "Microwave Latch")
+C_130J:defineInputOnlyPushButtonWithValues("GALLEY_MICROWAVE_OPEN", devices.J_WORLD, 3011, 1, nil, GALLEY, "Microwave Open")
+C_130J:defineInputOnlyPushButtonWithValues("GALLEY_MICROWAVE_CLOSE", devices.J_WORLD, 3011, -1, nil, GALLEY, "Microwave Close")
+C_130J:defineFloat("GALLEY_MICROWAVE_DOOR", 1655, { 0, 1 }, GALLEY, "Microwave Door Position")
+
+C_130J:defineToggleSwitch("GALLEY_DRAWER_BOT_STOPPER_L", devices.GALLEY, 3007, 1678, GALLEY, "Left Bottom Drawer Stopper")
+C_130J:defineToggleSwitch("GALLEY_DRAWER_BOT_STOPPER_R", devices.GALLEY, 3009, 1680, GALLEY, "Right Bottom Drawer Stopper")
+
+C_130J:reserveIntValue(65535) -- middle shelf, cmd 3003
+
+C_130J:defineToggleSwitch("GALLEY_SHELF_MID_STOPPER_L", devices.GALLEY, 3004, 1675, GALLEY, "Left Middle Shelf Stopper")
+C_130J:defineToggleSwitch("GALLEY_SHELF_MID_STOPPER_R", devices.GALLEY, 3005, 1676, GALLEY, "Right Middle Shelf Stopper")
+
+C_130J:defineToggleSwitch("GALLEY_SHELF_BOT", devices.GALLEY, 3006, 1667, GALLEY, "Bottom Shelf")
+
+C_130J:defineToggleSwitch("GALLEY_POWER_MASTER", devices.GALLEY, 3001, 1636, GALLEY, "Master Power")
+C_130J:defineToggleSwitch("GALLEY_POWER_COFFEE", devices.GALLEY, 3002, 1631, GALLEY, "Coffee Power")
+C_130J:defineToggleSwitch("GALLEY_LIQUID_CONT1", devices.GALLEY, 3027, 1632, GALLEY, "Liquid Container 1 Power")
+C_130J:defineToggleSwitch("GALLEY_LIQUID_CONT2", devices.GALLEY, 3028, 1633, GALLEY, "Liquid Container 2 Power")
+
+C_130J:defineToggleSwitch("GALLEY_CABINET_TOP_STOPPER", devices.GALLEY, 3029, 1670, GALLEY, "Top Cabinet Stopper")
+C_130J:defineToggleSwitch("GALLEY_CABINET_TOP_DOOR", devices.GALLEY, 3030, 1640, GALLEY, "Top Cabinet Door")
+
+C_130J:defineToggleSwitch("GALLEY_TRASH_DOOR_STOPPER", devices.GALLEY, 3031, 1681, GALLEY, "Trash Door Stopper")
+C_130J:defineToggleSwitch("GALLEY_TRASH_DOOR", devices.GALLEY, 3032, 1669, GALLEY, "Trash Door")
+C_130J:defineToggleSwitch("GALLEY_TRASH_DOOR_HATCH", devices.GALLEY, 3033, 1666, GALLEY, "Trash Door Hatch")
+
+C_130J:defineToggleSwitch("GALLEY_LIQUID_CONT1_STOPPER_L", devices.GALLEY, 3036, 1671, GALLEY, "Left Liquid Container 1 Stopper")
+C_130J:defineToggleSwitch("GALLEY_LIQUID_CONT1_STOPPER_R", devices.GALLEY, 3037, 1672, GALLEY, "Right Liquid Container 1 Stopper")
+C_130J:defineToggleSwitch("GALLEY_LIQUID_CONT2_STOPPER_L", devices.GALLEY, 3038, 1673, GALLEY, "Left Liquid Container 2 Stopper")
+C_130J:defineToggleSwitch("GALLEY_LIQUID_CONT2_STOPPER_R", devices.GALLEY, 3039, 1674, GALLEY, "Right Liquid Container 2 Stopper")
+
+C_130J:defineToggleSwitch("GALLEY_CENTER_CABINET_DOOR", devices.GALLEY, 3040, 1641, GALLEY, "Center Cabinet Door")
+
+C_130J:defineToggleSwitch("GALLEY_CABINET_BOT_DOOR", devices.GALLEY, 3034, 1668, GALLEY, "Bottom Cabinet Door")
+C_130J:defineToggleSwitch("GALLEY_CABINET_BOT_STOPPER", devices.GALLEY, 3008, 1679, GALLEY, "Bottom Cabinet Stopper")
+
+C_130J:reserveIntValue(65535) -- light control, draw arg 1630
+C_130J:reserveIntValue(1) -- liquid container 1 dispense, draw arg 1645
+C_130J:reserveIntValue(1) -- liquid container 2 dispense, draw arg 1646
 
 -- Interior Lights
 
+local INTERIOR_LIGHTS = "Interior Lights"
+
+C_130J:defineFloat("INT_LIGHT_DOME_GREEN", 4001, { 0, 1 }, INTERIOR_LIGHTS, "Dome Light (green)")
+C_130J:defineFloat("INT_LIGHT_DOME_WHITE", 4008, { 0, 1 }, INTERIOR_LIGHTS, "Dome Light (white)")
+C_130J:defineFloat("PLT_INT_LIGHT_FLOOD", 4004, { 0, 1 }, INTERIOR_LIGHTS, "Pilot Instrument Flood Lights (green)")
+C_130J:defineFloat("CPLT_INT_LIGHT_FLOOD", 4003, { 0, 1 }, INTERIOR_LIGHTS, "Copilot Instrument Flood Lights (green)")
+C_130J:defineFloat("INT_LIGHT_OVERHEAD_CENTER_FLOOD", 4005, { 0, 1 }, INTERIOR_LIGHTS, "Overhead Center Flood Lights (green)")
+C_130J:defineFloat("INT_LIGHT_OVERHEAD_OUTER_FLOOD", 4009, { 0, 1 }, INTERIOR_LIGHTS, "Overhead Outer Flood Lights (green)")
+C_130J:defineFloat("PLT_INT_LIGHT_CB_FLOOD", 4006, { 0, 1 }, INTERIOR_LIGHTS, "Pilot Circuit Breaker Flood Lights (green)")
+C_130J:defineFloat("CPLT_INT_LIGHT_CB_FLOOD", 4007, { 0, 1 }, INTERIOR_LIGHTS, "Copilot Circuit Breaker Flood Lights (green)")
+C_130J:defineFloat("PLT_INT_LIGHT_SIDE_CONSOLE_FLOOD", 4130, { 0, 1 }, INTERIOR_LIGHTS, "Pilot Side Console Flood Lights (green)")
+C_130J:defineFloat("CPLT_INT_LIGHT_SIDE_CONSOLE_FLOOD", 4129, { 0, 1 }, INTERIOR_LIGHTS, "Cilot Side Console Flood Lights (green)")
+
+C_130J:defineFloat("INT_LIGHT_FRONT_BACKLIGHT", 4042, { 0, 1 }, INTERIOR_LIGHTS, "Front Panel Backlight (green)")
+C_130J:defineFloat("INT_LIGHT_INSTRUMENT_BACKLIGHT", 4002, { 0, 1 }, INTERIOR_LIGHTS, "Standby Instruments Backlight (green)")
+C_130J:defineFloat("INT_LIGHT_OVERHEAD_BACKLIGHT", 4010, { 0, 1 }, INTERIOR_LIGHTS, "Overhead Console Backlight (green)")
+C_130J:defineFloat("INT_LIGHT_CENTER_BACKLIGHT", 4031, { 0, 1 }, INTERIOR_LIGHTS, "Center Console Backlight (green)")
+
 -- Interior Model
+
+local INTERIOR_MODEL = "Interior Model"
+
+C_130J:defineFloat("PLT_INTERIOR_MODEL_HUD", 6, { 0, 1 }, INTERIOR_MODEL, "Pilot HUD Position")
+C_130J:defineFloat("CPLT_INTERIOR_MODEL_HUD", 7, { 0, 1 }, INTERIOR_MODEL, "Copilot HUD Position")
+
+C_130J:defineFloat("PLT_INTERIOR_MODEL_WIPER", 112, { 0, 1 }, INTERIOR_MODEL, "Pilot Wiper")
+C_130J:defineFloat("CPLT_INTERIOR_MODEL_WIPER", 113, { 0, 1 }, INTERIOR_MODEL, "Copilot Wiper")
+
+C_130J:defineToggleSwitchManualRange("PLT_INTERIOR_MODEL_SUNSHADE", devices.PILOT_CPT_INTERFACE, 3009, 1612, { -1, 1 }, INTERIOR_MODEL, "Pilot Sunshade Show/Hide")
+C_130J:definePotentiometer("PLT_INTERIOR_MODEL_SUNSHADE_POS", devices.PILOT_CPT_INTERFACE, 3010, 1610, { 0, 1 }, INTERIOR_MODEL, "Pilot Sunshade Position")
+C_130J:defineToggleSwitchManualRange("CPLT_INTERIOR_MODEL_SUNSHADE", devices.COPILOT_CPT_INTERFACE, 3009, 1613, { -1, 1 }, INTERIOR_MODEL, "Copilot Sunshade Show/Hide")
+C_130J:definePotentiometer("CPLT_INTERIOR_MODEL_SUNSHADE_POS", devices.COPILOT_CPT_INTERFACE, 3010, 1611, { 0, 1 }, INTERIOR_MODEL, "Copilot Sunshade Position")
+
+C_130J:defineToggleSwitch("PLT_INTERIOR_MODEL_COFFEE", devices.PILOT_CPT_INTERFACE, 3014, 1687, INTERIOR_MODEL, "Pilot Coffee Cup")
+
+C_130J:defineFloat("INTERIOR_MODEL_BED_HEADREST", 1608, { 0, 1 }, INTERIOR_MODEL, "Bed Headrest")
+
+C_130J:defineFloat("INTERIOR_MODEL_CREW_DOOR_POSITION", 38, { 0, 1 }, INTERIOR_MODEL, "Crew Door")
+C_130J:defineToggleSwitch("INTERIOR_MODEL_CREW_DOOR", devices.MECH_INTERFACE, 3099, 2200, INTERIOR_MODEL, "Crew Door Handle")
 
 -- Exterior Lights
 
+local EXTERIOR_LIGHTS = "Exterior Lights"
+
+C_130J:defineBitFromDrawArgument("EXT_LIGHT_NAV", 190, EXTERIOR_LIGHTS, "Nav Light")
+C_130J:defineFloatFromDrawArgument("EXT_LIGHT_NAV_BRIGHT", 194, EXTERIOR_LIGHTS, "Nav Light Brightness")
+C_130J:defineFloatFromDrawArgument("EXT_LIGHT_FORMATION", 200, EXTERIOR_LIGHTS, "Formation Lights (white)")
+
+C_130J:defineFloatFromDrawArgument("EXT_LIGHT_TAXI_1", 208, EXTERIOR_LIGHTS, "Taxi Lights 1 (white)")
+C_130J:defineFloatFromDrawArgument("EXT_LIGHT_TAXI_2", 209, EXTERIOR_LIGHTS, "Taxi Lights 2 (white)")
+
+C_130J:defineBitFromDrawArgument("EXT_LIGHT_GEAR_MAIN", 1015, EXTERIOR_LIGHTS, "Main Gear Light")
+C_130J:defineFloatFromDrawArgument("EXT_LIGHT_GEAR_MAIN_BRIGHTNESS", 1016, EXTERIOR_LIGHTS, "Main Gear Light Brightness")
+
+C_130J:defineBitFromDrawArgument("EXT_LIGHT_LEAD_EDGE", 1018, EXTERIOR_LIGHTS, "Leading Edge Lights (white)")
+C_130J:defineBitFromDrawArgument("EXT_LIGHT_WINGTIP_TAXI", 1019, EXTERIOR_LIGHTS, "Wingtip/Taxi Lights (white)")
+
+C_130J:defineFloatFromDrawArgument("EXT_LIGHT_ANTI_COLL_TOP_RED", 1020, EXTERIOR_LIGHTS, "Top Anti-Collision Light (red)")
+C_130J:defineFloatFromDrawArgument("EXT_LIGHT_ANTI_COLL_BOT_RED", 1021, EXTERIOR_LIGHTS, "Bottom Anti-Collision Light (red)")
+C_130J:defineFloatFromDrawArgument("EXT_LIGHT_ANTI_COLL_TOP_WHITE", 1023, EXTERIOR_LIGHTS, "Top Anti-Collision Light (white)")
+C_130J:defineFloatFromDrawArgument("EXT_LIGHT_ANTI_COLL_BOT_WHITE", 1022, EXTERIOR_LIGHTS, "Bottom Anti-Collision Light (white)")
+
+C_130J:defineFloatFromDrawArgument("EXT_LIGHT_CARGO_GREEN", 4101, EXTERIOR_LIGHTS, "Cargo Lights (green)")
+C_130J:defineFloatFromDrawArgument("EXT_LIGHT_CARGO_GREEN_2", 4311, EXTERIOR_LIGHTS, "Cargo Lights 2 (green)")
+C_130J:defineFloatFromDrawArgument("EXT_LIGHT_CARGO_WHITE", 4102, EXTERIOR_LIGHTS, "Cargo Lights (white)")
+C_130J:defineFloatFromDrawArgument("EXT_LIGHT_CARGO_WHITE_2", 4301, EXTERIOR_LIGHTS, "Cargo Lights 2 (white)")
+
+C_130J:defineFloatFromDrawArgument("EXT_LIGHT_RAMP_SPOTLIGHT", 4312, EXTERIOR_LIGHTS, "Cargo Ramp Spotlights (white)")
+
+C_130J:reserveIntValue(65535) -- IR Strobe
+
 -- Exterior Model
+
+local EXTERIOR_MODEL = "Exterior Model"
+
+C_130J:defineFloatFromDrawArgument("EXT_GEAR_NOSE_DEPLOY", 1, EXTERIOR_MODEL, "Nose Gear Deployment")
+C_130J:defineFloatFromDrawArgument("EXT_GEAR_NOSE_COMPRESSION", 2, EXTERIOR_MODEL, "Nose Gear Strut Compression")
+C_130J:defineFloatFromDrawArgument("EXT_GEAR_NOSE_DOORS", 117, EXTERIOR_MODEL, "Nose Gear Doors")
+C_130J:defineFullRangeFloatFromExternalDrawArgument("EXT_GEAR_NOSE_ROT", 3, EXTERIOR_MODEL, "Nose Gear Rotation")
+C_130J:defineFloatFromDrawArgument("EXT_GEAR_R_DEPLOY", 4, EXTERIOR_MODEL, "Right Main Gear Deployment")
+C_130J:defineFloatFromDrawArgument("EXT_GEAR_R_COMPRESSION", 5, EXTERIOR_MODEL, "Right Main Gear Strut Compression")
+C_130J:defineFloatFromDrawArgument("EXT_GEAR_L_DEPLOY", 6, EXTERIOR_MODEL, "Left Main Gear Deployment")
+C_130J:defineFloatFromDrawArgument("EXT_GEAR_L_COMPRESSION", 7, EXTERIOR_MODEL, "Left Main Gear Strut Compression")
+
+C_130J:defineFloatFromDrawArgument("EXT_FLAPS_R", 9, EXTERIOR_MODEL, "Right Flaps Deployment")
+C_130J:defineFloatFromDrawArgument("EXT_FLAPS_L", 10, EXTERIOR_MODEL, "Left Flaps Deployment")
+C_130J:defineFullRangeFloatFromExternalDrawArgument("EXT_AILERON_R", 11, EXTERIOR_MODEL, "Right Aileron")
+C_130J:defineFullRangeFloatFromExternalDrawArgument("EXT_AILERON_L", 12, EXTERIOR_MODEL, "Left Aileron")
+C_130J:defineFullRangeFloatFromExternalDrawArgument("EXT_ELEVATOR", 15, EXTERIOR_MODEL, "Elevator")
+C_130J:defineFullRangeFloatFromExternalDrawArgument("EXT_ELEVATOR_TRIM", 16, EXTERIOR_MODEL, "Elevator Trim Tabs")
+C_130J:defineFullRangeFloatFromExternalDrawArgument("EXT_RUDDER", 18, EXTERIOR_MODEL, "Rudder")
+
+C_130J:defineFloatFromDrawArgument("EXT_RAMP", 86, EXTERIOR_MODEL, "Ramp Position")
+C_130J:defineFloatFromDrawArgument("EXT_PARA_DROP_DOOR_R", 87, EXTERIOR_MODEL, "Right Paratroop Drop Door")
+C_130J:defineFloatFromDrawArgument("EXT_PARA_DROP_DOOR_L", 88, EXTERIOR_MODEL, "Left Paratroop Drop Door")
+
+C_130J:defineFullRangeFloatFromExternalDrawArgument("EXT_WING_FLEX_R", 338, EXTERIOR_MODEL, "Right Wing Flex")
+C_130J:defineFullRangeFloatFromExternalDrawArgument("EXT_WING_FLEX_L", 339, EXTERIOR_MODEL, "Left Wing Flex")
+
+C_130J:defineFloatFromDrawArgument("EXT_PROP_1", 407, EXTERIOR_MODEL, "Prop 1")
+C_130J:defineFloatFromDrawArgument("EXT_PROP_2", 408, EXTERIOR_MODEL, "Prop 2")
+C_130J:defineFloatFromDrawArgument("EXT_PROP_3", 409, EXTERIOR_MODEL, "Prop 3")
+C_130J:defineFloatFromDrawArgument("EXT_PROP_4", 410, EXTERIOR_MODEL, "Prop 4")
+
+C_130J:defineFloatFromDrawArgument("EXT_PROP_PITCH_1", 413, EXTERIOR_MODEL, "Prop 1 Pitch")
+C_130J:defineFloatFromDrawArgument("EXT_PROP_PITCH_2", 414, EXTERIOR_MODEL, "Prop 2 Pitch")
+C_130J:defineFloatFromDrawArgument("EXT_PROP_PITCH_3", 415, EXTERIOR_MODEL, "Prop 3 Pitch")
+C_130J:defineFloatFromDrawArgument("EXT_PROP_PITCH_4", 416, EXTERIOR_MODEL, "Prop 4 Pitch")
+
+C_130J:defineFloatFromDrawArgument("EXT_ENGINE_COWL_FLAPS_1", 495, EXTERIOR_MODEL, "Engine 1 Cowl Flaps")
+C_130J:defineFloatFromDrawArgument("EXT_ENGINE_COWL_FLAPS_2", 496, EXTERIOR_MODEL, "Engine 2 Cowl Flaps")
+C_130J:defineFloatFromDrawArgument("EXT_ENGINE_COWL_FLAPS_3", 497, EXTERIOR_MODEL, "Engine 3 Cowl Flaps")
+C_130J:defineFloatFromDrawArgument("EXT_ENGINE_COWL_FLAPS_4", 498, EXTERIOR_MODEL, "Engine 4 Cowl Flaps")
+
+C_130J:defineFloatFromDrawArgument("EXT_TAXI_LIGHT", 427, EXTERIOR_MODEL, "Taxi Lights Position")
 
 -- Radios
 
--- Seat Position
+C_130J:defineReadWriteRadio("RADIO_UHF1", 7, 7, 3, 1000, "UHF 1")
+C_130J:defineReadWriteRadio("RADIO_UHF2", 9, 7, 3, 1000, "UHF 2")
+C_130J:defineReadWriteRadio("RADIO_VHF1", 6, 7, 3, 1000, "VHF 1")
+C_130J:defineReadWriteRadio("RADIO_VHF2", 8, 7, 3, 1000, "VHF 2")
+C_130J:defineReadWriteRadio("RADIO_HF1", 10, 7, 3, 1000, "HF 1")
+C_130J:defineReadWriteRadio("RADIO_HF2", 11, 7, 3, 1000, "HF 2")
+C_130J:defineReadWriteRadio("RADIO_ADF1", 16, 6, 1, 10, "ADF 1")
+C_130J:defineReadWriteRadio("RADIO_ADF2", 17, 6, 1, 10, "ADF 2")
+C_130J:defineReadWriteRadio("RADIO_ARC210", 92, 7, 3, 1000, "ARC-210")
+
+-- =====================================================================
+-- BEGIN Arcanum115 additions (cold-start / shutdown / CARP automation)
+-- Sourced from the C-130J cockpit module's command_defs.lua and
+-- clickabledata.lua. Controls that upstream now defines itself
+-- (APU_ALARM, ATCS, PROP_SYNC, ICE_PROP_1-4, HYD_AUX_PUMP, AC_CARGO_MAN,
+-- CNBP_COMM/NAV/ECB, APU_EGT, BLEED_AIR_PRESSURE, HYD_AUX_PRESSURE) were
+-- dropped from this block in favour of the upstream definitions.
+-- =====================================================================
+
+-- Pilot HUD Panel (additional mode buttons)
+local PLT_HUD_PANEL_A115 = "PLT HUD Panel"
+C_130J:definePushButton("PLT_HUD_VIS_MODE",  devices.P_DISPLAYS, 3026, 1311, PLT_HUD_PANEL_A115, "Pilot HUD Visual Mode")
+C_130J:definePushButton("PLT_HUD_CAT2_MODE", devices.P_DISPLAYS, 3031, 1313, PLT_HUD_PANEL_A115, "Pilot HUD CAT2 Mode")
+C_130J:definePushButton("PLT_HUD_OFFSIDE",   devices.P_DISPLAYS, 3030, 1314, PLT_HUD_PANEL_A115, "Pilot HUD Offside Mode")
+C_130J:definePushButton("PLT_HUD_UNCAGE",    devices.P_DISPLAYS, 3029, 1315, PLT_HUD_PANEL_A115, "Pilot HUD Uncage Mode")
+C_130J:definePushButton("PLT_HUD_NAV_MODE",  devices.P_DISPLAYS, 3027, 1316, PLT_HUD_PANEL_A115, "Pilot HUD Nav Mode")
+C_130J:definePushButton("PLT_HUD_TAC_MODE",  devices.P_DISPLAYS, 3028, 1318, PLT_HUD_PANEL_A115, "Pilot HUD Tactical Mode")
+C_130J:definePushButton("PLT_HUD_BRT_AUTO",  devices.P_DISPLAYS, 3025, 1320, PLT_HUD_PANEL_A115, "Pilot HUD Brightness - Pull for Auto")
+
+-- Pilot AMU softkeys (around HDD1 / HDD2 displays)
+local PLT_AMU = "PLT AMU Softkeys"
+-- Left AMU (around HDD1): uses P_AMU.r_key_1..8 (cmd 3011-3018), args 133-140
+C_130J:definePushButton("PLT_AMU_L_L1", devices.P_DISPLAYS, 3011, 133, PLT_AMU, "Pilot Left AMU LSK L1")
+C_130J:definePushButton("PLT_AMU_L_L2", devices.P_DISPLAYS, 3012, 134, PLT_AMU, "Pilot Left AMU LSK L2")
+C_130J:definePushButton("PLT_AMU_L_L3", devices.P_DISPLAYS, 3013, 135, PLT_AMU, "Pilot Left AMU LSK L3")
+C_130J:definePushButton("PLT_AMU_L_L4", devices.P_DISPLAYS, 3014, 136, PLT_AMU, "Pilot Left AMU LSK L4")
+C_130J:definePushButton("PLT_AMU_L_R1", devices.P_DISPLAYS, 3015, 137, PLT_AMU, "Pilot Left AMU LSK R1")
+C_130J:definePushButton("PLT_AMU_L_R2", devices.P_DISPLAYS, 3016, 138, PLT_AMU, "Pilot Left AMU LSK R2")
+C_130J:definePushButton("PLT_AMU_L_R3", devices.P_DISPLAYS, 3017, 139, PLT_AMU, "Pilot Left AMU LSK R3")
+C_130J:definePushButton("PLT_AMU_L_R4", devices.P_DISPLAYS, 3018, 140, PLT_AMU, "Pilot Left AMU LSK R4")
+-- Right AMU (around HDD2): uses P_AMU.l_key_1..8 (cmd 3001-3008), args 141-148
+C_130J:definePushButton("PLT_AMU_R_L1", devices.P_DISPLAYS, 3001, 141, PLT_AMU, "Pilot Right AMU LSK L1")
+C_130J:definePushButton("PLT_AMU_R_L2", devices.P_DISPLAYS, 3002, 142, PLT_AMU, "Pilot Right AMU LSK L2")
+C_130J:definePushButton("PLT_AMU_R_L3", devices.P_DISPLAYS, 3003, 143, PLT_AMU, "Pilot Right AMU LSK L3")
+C_130J:definePushButton("PLT_AMU_R_L4", devices.P_DISPLAYS, 3004, 144, PLT_AMU, "Pilot Right AMU LSK L4")
+C_130J:definePushButton("PLT_AMU_R_R1", devices.P_DISPLAYS, 3005, 145, PLT_AMU, "Pilot Right AMU LSK R1")
+C_130J:definePushButton("PLT_AMU_R_R2", devices.P_DISPLAYS, 3006, 146, PLT_AMU, "Pilot Right AMU LSK R2")
+C_130J:definePushButton("PLT_AMU_R_R3", devices.P_DISPLAYS, 3007, 147, PLT_AMU, "Pilot Right AMU LSK R3")
+C_130J:definePushButton("PLT_AMU_R_R4", devices.P_DISPLAYS, 3008, 148, PLT_AMU, "Pilot Right AMU LSK R4")
+
+-- Copilot AMU softkeys (around HDD3 / HDD4 displays)
+local CPLT_AMU = "CPLT AMU Softkeys"
+-- Copilot Left AMU (around HDD3): uses C_AMU.l_key_1..8 (cmd 3011-3018), args 174-181
+C_130J:definePushButton("CPLT_AMU_L_L1", devices.C_DISPLAYS, 3011, 174, CPLT_AMU, "Copilot Left AMU LSK L1")
+C_130J:definePushButton("CPLT_AMU_L_L2", devices.C_DISPLAYS, 3012, 175, CPLT_AMU, "Copilot Left AMU LSK L2")
+C_130J:definePushButton("CPLT_AMU_L_L3", devices.C_DISPLAYS, 3013, 176, CPLT_AMU, "Copilot Left AMU LSK L3")
+C_130J:definePushButton("CPLT_AMU_L_L4", devices.C_DISPLAYS, 3014, 177, CPLT_AMU, "Copilot Left AMU LSK L4")
+C_130J:definePushButton("CPLT_AMU_L_R1", devices.C_DISPLAYS, 3015, 178, CPLT_AMU, "Copilot Left AMU LSK R1")
+C_130J:definePushButton("CPLT_AMU_L_R2", devices.C_DISPLAYS, 3016, 179, CPLT_AMU, "Copilot Left AMU LSK R2")
+C_130J:definePushButton("CPLT_AMU_L_R3", devices.C_DISPLAYS, 3017, 180, CPLT_AMU, "Copilot Left AMU LSK R3")
+C_130J:definePushButton("CPLT_AMU_L_R4", devices.C_DISPLAYS, 3018, 181, CPLT_AMU, "Copilot Left AMU LSK R4")
+
+-- Standby Attitude / Altimeter
+local STANDBY_INSTR = "Standby Instruments"
+C_130J:definePushButton("STBY_ADI_CAGE", devices.MECH_INTERFACE, 3104, 128, STANDBY_INSTR, "Standby Attitude Indicator - Pull to Cage")
+C_130J:defineRotary("STBY_ADI_PITCH_BIAS", devices.MECH_INTERFACE, 3103, 127, STANDBY_INSTR, "Standby Attitude Indicator Pitch Bias Adjust")
+C_130J:defineRotary("STBY_BARO_KNB", devices.MECH_INTERFACE, 3102, 125, STANDBY_INSTR, "Standby Altimeter Baro Adjust")
+
+-- ARC-210 (Pilot Radio Control Unit)
+local ARC_210_A115 = "ARC-210 Radio Control Unit"
+-- Operational Mode Switch: 7 positions (OFF, TR+G, TR, ADF, CHG PRST, TEST, ZEROIZE)
+C_130J:defineMultipositionSwitch("ARC210_OP_MODE", devices.VOLUME_MANAGER, 3165, 543, 7, 1/6, ARC_210_A115, "ARC-210 Operational Mode Switch")
+-- Squelch (2 positions: OFF=-1, ON=1)  -- use defineMultipositionSwitch to cover the {-1,1} range
+C_130J:defineMultipositionSwitch("ARC210_SQL", devices.VOLUME_MANAGER, 3159, 532, 2, 2, ARC_210_A115, "ARC-210 Squelch Switch")
 
 -- =====================================================================
 -- BEGIN MERGED PATCH (cold-start / shutdown automation additions, Arcanum115)
@@ -1207,7 +2092,6 @@ C_130J:definePushButton("ENG_4_STOP", devices.ENGINE_APU_CTRL, 3014, 313, POWERP
 -- APU Control Panel
 C_130J:defineMultipositionSwitch("APU_SWITCH", devices.ENGINE_APU_CTRL, 3015, 322, 3, 0.5, APU_PANEL, "APU Switch (STOP/RUN/START)")
 C_130J:definePushButton(         "APU_STOP",   devices.ENGINE_APU_CTRL, 3030, 322, APU_PANEL, "APU Stop Command")
-C_130J:defineToggleSwitch(       "APU_ALARM",  devices.ENGINE_APU_CTRL, 3027, 425, APU_PANEL, "APU Alarm Switch")
 
 -- Fire Handles (Engines 1-4 + APU)
 C_130J:definePushButton("ENG_1_FIRE_PULL", devices.ENGINE_APU_CTRL, 3022, 314, FIRE_PANEL, "Engine 1 Fire Handle Pull")
@@ -1239,9 +2123,6 @@ C_130J:define3PosTumb("PROP_CTRL_3", devices.ENGINE_APU_CTRL, 3045, 374, POWERPL
 C_130J:define3PosTumb("PROP_CTRL_4", devices.ENGINE_APU_CTRL, 3046, 375, POWERPLANT, "Propeller 4 Control (FEATHER/NORMAL/UNFEATHER)")
 
 -- ATCS / Prop Sync
-C_130J:defineToggleSwitch("ATCS_GUARD", devices.ENGINE_APU_CTRL, 3047, 327, POWERPLANT, "ATCS Switch Guard", { positions = CommonPositions.COVER })
-C_130J:defineToggleSwitch("ATCS",       devices.ENGINE_APU_CTRL, 3049, 416, POWERPLANT, "ATCS Switch")
-C_130J:defineToggleSwitch("PROP_SYNC",  devices.ENGINE_APU_CTRL, 3048, 376, POWERPLANT, "Prop Sync Switch")
 
 -- Bleed Air Control Panel - 3-pos switches, arg range {-1, 1} (AUTO = center = value 1)
 C_130J:definePushButton("BLEED_APU",     devices.ENGINE_APU_CTRL, 3050, 355, BLEED_AIR_PANEL, "APU Bleed Air Switch")
@@ -1254,10 +2135,6 @@ C_130J:define3PosTumb(  "BLEED_NAC_3",   devices.ENGINE_APU_CTRL, 3056, 392, BLE
 C_130J:define3PosTumb(  "BLEED_NAC_4",   devices.ENGINE_APU_CTRL, 3057, 393, BLEED_AIR_PANEL, "Engine 4 Nacelle Shutoff (CLOSE/AUTO/OPEN)")
 
 -- Ice Protection - 3-pos switches, arg range {-1, 1} (AUTO = center = value 1)
-C_130J:define3PosTumb("ICE_PROP_1",  devices.ENGINE_APU_CTRL, 3058, 386, ICE_PROTECTION, "Propeller 1 Ice Protection")
-C_130J:define3PosTumb("ICE_PROP_2",  devices.ENGINE_APU_CTRL, 3059, 387, ICE_PROTECTION, "Propeller 2 Ice Protection")
-C_130J:define3PosTumb("ICE_PROP_3",  devices.ENGINE_APU_CTRL, 3060, 388, ICE_PROTECTION, "Propeller 3 Ice Protection")
-C_130J:define3PosTumb("ICE_PROP_4",  devices.ENGINE_APU_CTRL, 3061, 389, ICE_PROTECTION, "Propeller 4 Ice Protection")
 C_130J:define3PosTumb("ICE_ENGINE",  devices.ENGINE_APU_CTRL, 3062, 385, ICE_PROTECTION, "Engine Ice Protection")
 C_130J:define3PosTumb("ICE_WING",    devices.ENGINE_APU_CTRL, 3063, 384, ICE_PROTECTION, "Wing/Empennage Ice Protection")
 C_130J:defineToggleSwitch(       "ICE_DEICE",   devices.ENGINE_APU_CTRL, 3064, 382, ICE_PROTECTION, "Anti-Ice / De-Ice Switch")
@@ -1271,7 +2148,6 @@ C_130J:defineToggleSwitch("ANTI_SKID", devices.ENGINE_APU_CTRL, 3029, 37, HYDRAU
 
 -- Hydraulic Control Panel
 C_130J:definePushButton(  "HYD_EMERG_BRAKE_SEL",   devices.HYDRAULICS, 3001, 99, HYDRAULIC_PANEL, "Emergency Brake Select")
-C_130J:defineToggleSwitch("HYD_AUX_PUMP",          devices.HYDRAULICS, 3002, 45, HYDRAULIC_PANEL, "Auxiliary Hydraulic Pump")
 C_130J:definePushButton(  "HYD_ENG_PUMP_1_UTIL",   devices.HYDRAULICS, 3003, 39, HYDRAULIC_PANEL, "Engine 1 Hydraulic Pump (Utility)")
 C_130J:definePushButton(  "HYD_ENG_PUMP_2_UTIL",   devices.HYDRAULICS, 3004, 40, HYDRAULIC_PANEL, "Engine 2 Hydraulic Pump (Utility)")
 C_130J:definePushButton(  "HYD_ENG_PUMP_3_BOOST",  devices.HYDRAULICS, 3005, 41, HYDRAULIC_PANEL, "Engine 3 Hydraulic Pump (Booster)")
@@ -1312,7 +2188,6 @@ C_130J:defineToggleSwitch("PLT_ICS_RWR_BUTTON", devices.VOLUME_MANAGER, 3076, 44
 C_130J:definePushButton("AC_FLT_PWR",   devices.PLANE_ATM, 3001, 352, AC_PANEL, "Flight Station A/C Power")
 C_130J:definePushButton("AC_CARGO_PWR", devices.PLANE_ATM, 3002, 353, AC_PANEL, "Cargo Compartment A/C Power")
 C_130J:definePushButton("AC_FLT_MAN",   devices.PLANE_ATM, 3005, 350, AC_PANEL, "Flight Station A/C Manual")
-C_130J:definePushButton("AC_CARGO_MAN", devices.PLANE_ATM, 3006, 351, AC_PANEL, "Cargo Compartment A/C Manual")
 
 -- Communication/Navigation/Breaker Panel (CNBP) - device.CNBP = 19
 -- Command IDs from CNE section in command_defs.lua (reset_to_init() then counter() starting at 3001)
@@ -1337,9 +2212,6 @@ C_130J:definePushButton("CNBP_BTN_R1", devices.CNBP, 3017, 155, CNBP_PANEL, "CNB
 C_130J:definePushButton("CNBP_BTN_R2", devices.CNBP, 3018, 156, CNBP_PANEL, "CNBP LSK R2")
 C_130J:definePushButton("CNBP_BTN_R3", devices.CNBP, 3019, 157, CNBP_PANEL, "CNBP LSK R3")
 C_130J:definePushButton("CNBP_BTN_R4", devices.CNBP, 3020, 158, CNBP_PANEL, "CNBP LSK R4")
-C_130J:definePushButton("CNBP_COMM",   devices.CNBP, 3021, 159, CNBP_PANEL, "CNBP COMM Key")
-C_130J:definePushButton("CNBP_NAV",    devices.CNBP, 3022, 160, CNBP_PANEL, "CNBP NAV Key")
-C_130J:definePushButton("CNBP_ECB",    devices.CNBP, 3023, 161, CNBP_PANEL, "CNBP ECB Key")
 
 -- Pilot / Copilot Master Warning and Master Caution (push to reset)
 local REF_PANEL = "Reference Mode Panel"
@@ -1402,14 +2274,6 @@ C_130J:defineString("APU_NG", function()
 	return safe_numeric_lcd(33, 3)
 end, 3, OVERHEAD_DISPLAYS, "APU NG / Gas Generator RPM (%)")
 
-C_130J:defineString("APU_EGT", function()
-	return safe_numeric_lcd(34, 4)
-end, 4, OVERHEAD_DISPLAYS, "APU EGT (deg C)")
-
-C_130J:defineString("BLEED_AIR_PRESSURE", function()
-	return safe_numeric_lcd(35, 3)
-end, 3, OVERHEAD_DISPLAYS, "Bleed Air Manifold Pressure (PSI)")
-
 C_130J:defineString("AIR_CABIN_TEMP", function()
 	return safe_numeric_lcd(36, 3)
 end, 3, OVERHEAD_DISPLAYS, "Flight Station Air Temperature")
@@ -1417,10 +2281,6 @@ end, 3, OVERHEAD_DISPLAYS, "Flight Station Air Temperature")
 C_130J:defineString("AIR_CARGO_TEMP", function()
 	return safe_numeric_lcd(37, 3)
 end, 3, OVERHEAD_DISPLAYS, "Cargo Compartment Air Temperature")
-
-C_130J:defineString("HYD_AUX_PRESSURE", function()
-	return safe_numeric_lcd(43, 4)
-end, 4, OVERHEAD_DISPLAYS, "Auxiliary Hydraulic Pressure (PSI)")
 
 -- Ambient atmospheric pressure at the aircraft (QFE when on the ground at the
 -- field), read from the sim atmosphere via LoGetBasicAtmospherePressure().
