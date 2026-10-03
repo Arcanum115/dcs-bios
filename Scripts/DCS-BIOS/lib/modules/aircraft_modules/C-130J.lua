@@ -1162,8 +1162,13 @@ C_130J:define3PosTumb("PROP_CONTROL_3", devices.ENGINE_APU_CTRL, 3045, 374, FADE
 C_130J:define3PosTumb("PROP_CONTROL_4", devices.ENGINE_APU_CTRL, 3046, 375, FADEC, "Propeller 4 Control Switch", PROP_CONTROL_ATTRIBUTES)
 
 C_130J:defineToggleSwitch("ATCS_GUARD", devices.ENGINE_APU_CTRL, 3047, 327, FADEC, "ATCS Switch Guard", { positions = CommonPositions.COVER })
-C_130J:defineToggleSwitchManualRange("ATCS", devices.ENGINE_APU_CTRL, 3049, 416, { 1, 0 }, FADEC, "ATCS")
-C_130J:defineToggleSwitchManualRange("PROP_SYNC", devices.ENGINE_APU_CTRL, 3048, 376, { 1, 0 }, FADEC, "Prop Sync Switch")
+-- Fork divergence (Arcanum115): upstream defines ATCS and PROP_SYNC with an
+-- inverted manual range ({ 1, 0 }), under which "set state 1" drives the
+-- cockpit arg to 0 and the switch never reaches the engaged position in-game.
+-- Plain toggle switches (state 1 -> arg 1) are the verified-working mapping
+-- for the Anubis C-130J and what the DCSAutoMate cold start sends.
+C_130J:defineToggleSwitch("ATCS", devices.ENGINE_APU_CTRL, 3049, 416, FADEC, "ATCS")
+C_130J:defineToggleSwitch("PROP_SYNC", devices.ENGINE_APU_CTRL, 3048, 376, FADEC, "Prop Sync Switch")
 
 -- Exterior Lighting Panel
 local EXT_LIGHT_PANEL = "Exterior Lighting Panel"

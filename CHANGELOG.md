@@ -13,6 +13,19 @@ DCS-BIOS regenerates `doc/json/*.json` on module load, so no manual JSON regen
 is needed. Copy the modified `C-130J.lua` into
 `%USERPROFILE%\Saved Games\DCS\Scripts\DCS-BIOS\lib\modules\aircraft_modules\`.
 
+## [2026-10-03] — Upstream merge & ATCS/PROP_SYNC fix
+
+Merged upstream DCS-Skunkworks/dcs-bios, whose new official C-130J module
+(#1791) replaced this fork's base copy; all Arcanum115 additions were
+re-appended in one block, dropping 16 controls upstream now defines itself.
+
+### Fixed
+- **`ATCS` / `PROP_SYNC`** — reverted to plain `defineToggleSwitch`. Upstream's
+  inverted manual range (`{ 1, 0 }`) made "set state 1" drive the cockpit arg
+  to 0, so the switches never engaged in-game (broke the DCSAutoMate cold
+  start). Note: output addresses shifted in the merge — restart DCS (regenerates
+  `doc/json`), then restart DCSAutoMate so it reloads the new addresses.
+
 ## [2026-10-03] — C-130J CARP CNI exports & misc controls
 
 String outputs that read the pilot CNI-MU display (indication id 8) so the
