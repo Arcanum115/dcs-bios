@@ -75,12 +75,15 @@ jobs:
           name: addresses-h
           path: Scripts/DCS-BIOS/doc/Addresses.h
 
+        # zip only the DCS-BIOS folder, so extracting the asset can't overwrite
+        # the user's Export.lua and wipe their other export hooks
       - name: Archive Release
         uses: thedoctor0/zip-release@0.7.6
         with:
           type: zip
           filename: '${{ steps.filename.outputs.zip }}'
           directory: './Scripts'
+          path: 'DCS-BIOS'
           exclusions: '/*test/*'
 
       - name: Archive Programs
@@ -96,6 +99,7 @@ jobs:
           allowUpdates: true
           artifactErrorsFailBuild: true
           artifacts: './Scripts/${{ steps.filename.outputs.zip }},./Programs/Arduino_Tools.zip'
+          bodyFile: '.github/RELEASE_NOTES.md'
           makeLatest: true
           name: 'DCS-BIOS ${{ github.ref_name }}'
           removeArtifacts: true
