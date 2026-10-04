@@ -85,14 +85,21 @@
 
 ## About The Project
 
-DCS-BIOS is an `Export.lua` script for use with [DCS: World][dcs-url], enabling
-external hardware and software to interact with the clickable cockpit of a DCS
-aircraft. It streams cockpit state out of the sim and accepts commands back in,
-so physical panels, button boxes and automation tools can read gauges and throw
-switches exactly as a pilot would.
+DCS-BIOS is a script for use with [DCS: World][dcs-url], enabling external
+hardware and software to interact with the clickable cockpit of a DCS aircraft.
+It streams cockpit state out of the sim and accepts commands back in, so physical
+panels, button boxes and automation tools can read gauges and throw switches
+exactly as a pilot would.
 
-This fork tracks upstream and adds coverage for the Anubis Productions
-**C-130J-30**, including the CARP airdrop work that is still in beta.
+> [!NOTE]
+> **DCS-Skunkworks actively maintains DCS-BIOS** and keeps [their repository][upstream-url]
+> updated — new modules, fixes and improvements land there regularly, and this
+> fork tracks their work. Adding and supporting modules takes a great deal of
+> time, so if you get value out of DCS-BIOS, **please consider donating to them**
+> as they continue the project. Details are on [their repository][upstream-url].
+
+This fork adds coverage for the Anubis Productions **C-130J-30**, including the
+CARP airdrop work that is still in beta.
 
 ## Getting Started
 
@@ -446,6 +453,7 @@ The copy of `socat` that ships with DCS-BIOS is licensed under `GPL 2.0` (see
 [license-url]: LICENSE
 
 [dcs-url]: http://www.digitalcombatsimulator.com
+[upstream-url]: https://github.com/DCS-Skunkworks/dcs-bios
 [latest-release-url]: https://github.com/Arcanum115/dcs-bios/releases/latest
 [user-guide-url]: Scripts/DCS-BIOS/doc/userguide.adoc
 [developer-guide-url]: Scripts/DCS-BIOS/doc/developerguide.adoc
