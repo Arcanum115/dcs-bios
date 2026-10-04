@@ -1,30 +1,24 @@
-[![Contributors][contributors-shield]][contributors-url]
-[![Issues][issues-shield]][issues-url]
-[![MIT License][license-shield]][license-url]
-[![Discord][discord-shield]][discord-url]
 [![Release][release-shield]][release-url]
 ![Downloads][downloads-shield]
-[![Sponsors][opencollective-shield]][opencollective-url]
+[![Issues][issues-shield]][issues-url]
+[![License][license-shield]][license-url]
 
 <br />
 <div align="center">
-  <a href="https://github.com/DCS-Skunkworks/dcs-bios">
-    <img src="https://avatars.githubusercontent.com/u/34946890?s=200&v=4" alt="Logo" width="80" height="80">
-  </a>
 
-<h3 align="center">DCS-BIOS</h3>
+<h3 align="center">DCS-BIOS — C-130J-30 fork</h3>
 
   <p align="center">
-    a DCS data exporting tool
-    <br />
-    <a href="https://github.com/DCS-Skunkworks/dcs-bios/wiki"><strong>Explore the docs »</strong></a>
+    a DCS data exporting tool, with added Anubis Productions C-130J-30 coverage
     <br />
     <br />
-    <a href="https://github.com/DCS-Skunkworks/dcs-bios/discussions">Ask a Question</a>
+    <a href="#installation">Install</a>
     ·
-    <a href="https://github.com/DCS-Skunkworks/dcs-bios/issues/new?assignees=charliefoxtwo&labels=bug%2Cneeds+triage&projects=&template=10_bug_report.yml">Report Bug</a>
+    <a href="#c-130j-carp-testing-beta">CARP (beta)</a>
     ·
-    <a href="https://github.com/DCS-Skunkworks/dcs-bios/issues/new?assignees=charliefoxtwo&labels=enhancement%2Cneeds+triage&projects=&template=20_control_request.yml">Request Feature</a>
+    <a href="#modules">Modules</a>
+    ·
+    <a href="https://github.com/Arcanum115/dcs-bios/releases/latest">Latest release</a>
   </p>
 </div>
 
@@ -33,203 +27,365 @@
 >
 > This fork adds support for the **Anubis Productions C-130J-30** module
 > (cockpit controls, FADEC guards, master caution / master warning, full
-> CNI-MU keypad, defensive-systems pages, overhead LCD outputs) on top of
-> upstream DCS-Skunkworks/dcs-bios.
+> CNI-MU keypad, defensive-systems pages, overhead LCD outputs), plus the
+> experimental **CARP airdrop exports** described [below](#c-130j-carp-testing-beta).
 >
 > The C-130J additions are **working but still WIP**.
 >
-> **AI-assisted disclaimer:** the C-130J Lua module and parts of this README were developed with
-> assistance from Anthropic's Claude AI. All code was hand-verified,
-> tested in DCS, and the author ([Arcanum115](https://github.com/Arcanum115)) is responsible for what's
-> shipped here. Flagging this so contributors and reviewers are informed.
+> **AI-assisted disclaimer:** the C-130J Lua module and parts of this README were
+> developed with assistance from Anthropic's Claude AI. All code was hand-verified,
+> tested in DCS, and the author ([Arcanum115](https://github.com/Arcanum115)) is
+> responsible for what's shipped here. Flagging this so contributors and reviewers
+> are informed.
+
+> [!NOTE]
+> **Upstream credit**
+>
+> DCS-BIOS is created and maintained by the DCS-Skunkworks team and its
+> contributors. Everything in this repository other than the C-130J-30 additions
+> is their work, under their `GPL 3.0` license. For the original project, its
+> documentation, its community and its issue tracker, go to the upstream
+> repository: **<https://github.com/DCS-Skunkworks/dcs-bios>**
+>
+> This is an unofficial fork. Please do not raise fork-specific issues upstream.
 
 <details>
   <summary>Table of Contents</summary>
   <ol>
-    <li>
-      <a href="#about-the-project">About The Project</a>
-    </li>
+    <li><a href="#about-the-project">About The Project</a></li>
     <li>
       <a href="#getting-started">Getting Started</a>
       <ul>
         <li><a href="#prerequisites">Prerequisites</a></li>
-      </ul>
-      <ul>
         <li><a href="#installation">Installation</a></li>
+        <li><a href="#updating-from-an-older-version">Updating from an older version</a></li>
       </ul>
     </li>
-    <li><a href="#usage">Usage</a></li>
+    <li><a href="#c-130j-carp-testing-beta">C-130J CARP Testing (BETA)</a></li>
+    <li>
+      <a href="#usage">Usage</a>
       <ul>
         <li><a href="#panel-builders">Panel Builders</a></li>
-      </ul>
-      <ul>
         <li><a href="#software-developers">Software Developers</a></li>
       </ul>
-    <li><a href="#modules">Modules</a></li>
+    </li>
+    <li>
+      <a href="#modules">Modules</a>
       <ul>
-        <li><a href="#official">Official</a></li>
-      </ul>
-      <ul>
-        <li><a href="#mods">Mods</a></li>
-      </ul>
-      <ul>
+        <li><a href="#official-dcs-modules">Official DCS Modules</a></li>
+        <li><a href="#full-fidelity-mods">Full-Fidelity Mods</a></li>
+        <li><a href="#flaming-cliffs-mods">Flaming Cliffs Mods</a></li>
         <li><a href="#adding-a-mod">Adding a Mod</a></li>
       </ul>
+    </li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
-    <li><a href="#contact">Contact</a></li>
-    <li><a href="#acknowledgments">Acknowledgments</a></li>
   </ol>
 </details>
 
-> [!NOTE]
-> Adding new modules and supporting existing ones takes a _lot_ of time. If you have the financial means and like what we do, please consider supporting us on [Open Collective](https://opencollective.com/dcs-skunkworks)!
-
 ## About The Project
 
-DCS-BIOS is an `Export.lua` script for use with [DCS: World][dcs-url], enabling external hardware and software to interact with the clickable cockpit of a DCS aircraft.
+DCS-BIOS is an `Export.lua` script for use with [DCS: World][dcs-url], enabling
+external hardware and software to interact with the clickable cockpit of a DCS
+aircraft. It streams cockpit state out of the sim and accepts commands back in,
+so physical panels, button boxes and automation tools can read gauges and throw
+switches exactly as a pilot would.
 
-> [!NOTE]
-> DCS-Skunkworks DCS-BIOS is a continuation of the [original DCS-BIOS][original-dcs-bios-url], which is no longer updated.
+This fork tracks upstream and adds coverage for the Anubis Productions
+**C-130J-30**, including the CARP airdrop work that is still in beta.
 
 ## Getting Started
 
-Getting started with DCS-BIOS is easy! Just follow these simple steps. 
-
 ### Prerequisites
+
+- **DCS World 2.9.x**
+- For the C-130J coverage: the Anubis Productions **C-130J-30** mod installed
 
 #### Find your DCS Scripts folder
 
 Start by finding your DCS Saved Games folder. On Windows, this is likely either:
+
 - `C:\Users\USERNAME\Saved Games\DCS`
 - `C:\Users\USERNAME\Saved Games\DCS.openbeta`
 
-Within that folder, you find the folder called `Scripts`. Create one if it does not exist. The final path should look like:
+Within that folder you'll find a folder called `Scripts`. Create one if it does
+not exist. The final path should look like:
+
 - `C:\Users\USERNAME\Saved Games\DCS\Scripts`
 - `C:\Users\USERNAME\Saved Games\DCS.openbeta\Scripts`
 
 ### Installation
 
-> [!Note]
-> The process for updating DCS-BIOS is exactly the same as installing it.
+> [!IMPORTANT]
+> **Already running an older DCS-BIOS?** Do not copy the new files over the old
+> ones — see [Updating from an older version](#updating-from-an-older-version)
+> first, then come back to step 3.
 
 1. Go to the [latest release][latest-release-url]
-2. Download `DCS-BIOS_x.y.z.zip`
-3. Extract the zip file
-4. Within the extracted folder, copy the `DCS-BIOS` folder into the previously mentioned scripts folder.
-5. **If your Scripts folder does not have an `Export.lua` file**, copy the `Export.lua` file over
-6. **If your scripts folder _does_ have an `Export.lua` file**, add the following line to the end 
-```dofile(lfs.writedir() .. [[Scripts\DCS-BIOS\BIOS.lua]])```
+2. Download `DCS-BIOS.zip`
+3. Extract the zip. It contains a single `DCS-BIOS` folder.
+4. Copy that `DCS-BIOS` folder into the `Scripts` folder you found above, so you
+   end up with `...\Saved Games\DCS\Scripts\DCS-BIOS\BIOS.lua`
+5. Open (or create) `...\Saved Games\DCS\Scripts\Export.lua`. If the file does not
+   exist, create it. If it already exists, **add to the end of it** — do not
+   replace it, or you'll remove the hooks for your other mods and tools:
 
-> [!Tip]
-> Still having trouble? Check out our [wiki][wiki-url], ask a question in [Discussions][discussions-url] or get in touch on [Discord][discord-url].
+   ```lua
+   dofile(lfs.writedir() .. [[Scripts\DCS-BIOS\BIOS.lua]])
+   ```
+
+6. Start DCS and load a mission in a supported aircraft.
+
+> [!NOTE]
+> That single line is all DCS-BIOS needs. (The CARP automation adds a second,
+> separate line — see [CARP Testing](#c-130j-carp-testing-beta).)
+
+> [!NOTE]
+> The release zip deliberately does **not** contain an `Export.lua`, so
+> installing or updating can never overwrite the one you already have and wipe
+> hooks for your other mods and tools.
+
+### Updating from an older version
+
+Replacing the folder wholesale is the supported way to update. Merging the new
+files into an old install leaves stale generated files behind in `DCS-BIOS\doc\json`,
+and any client that reads those will use **out-of-date output addresses** — the
+usual symptom is a value that looks correct in the cockpit but never registers in
+your panel or automation tool.
+
+1. **Quit DCS** completely.
+2. **Delete** your existing folder outright:
+
+   ```
+   %USERPROFILE%\Saved Games\DCS\Scripts\DCS-BIOS
+   ```
+
+   (Use `...\Saved Games\DCS.openbeta\Scripts\DCS-BIOS` on Open Beta.)
+
+3. **Install the new version** by following steps 1–4 of
+   [Installation](#installation) above.
+4. **Leave `Export.lua` alone.** It lives outside the `DCS-BIOS` folder and is not
+   part of the zip, so your existing hooks survive. Just confirm the DCS-BIOS
+   `dofile` line is still present.
+5. **Restart DCS first, then restart your DCS-BIOS client.** DCS regenerates
+   `DCS-BIOS\doc\json` when it loads a module, and clients typically read those
+   address definitions once at startup. A client started before the regeneration
+   finishes will be reading the old addresses.
+
+> [!TIP]
+> Output addresses shift whenever a module's control set changes, which includes
+> most updates to this fork. If something that used to work goes quiet after an
+> update, the DCS-then-client restart order in step 5 is the first thing to check.
+
+## C-130J CARP Testing (BETA)
+
+> [!WARNING]
+> **This is experimental and under active development.** The outputs below are
+> beta, their parsing is best-effort, and field positions can move when the
+> cockpit mod is updated. Do not depend on them for anything you care about yet.
+> Everything here is guarded so that a parsing failure returns an empty string
+> rather than breaking the export stream.
+
+### What CARP is
+
+**CARP** stands for **Computed Air Release Point** — the point in space where
+cargo has to leave the aircraft so that it lands on the drop zone. It is not the
+same as the target: a bundle released over the drop zone will overshoot it,
+because it keeps the aircraft's forward momentum and then drifts under its
+parachute. Working out the release point means accounting for ground speed,
+drop altitude, the wind through the drop, and how that specific parachute and
+load behave.
+
+In the real C-130J the crew programs this on the **CNI-MU**, across the
+`CARP INIT` pages — entering the point of impact, the run-in course, drop zone
+dimensions, the load type and parachute, drop speed, and the winds. The avionics
+then compute the release point and drive the green light for the loadmaster.
+
+### What this fork adds
+
+DCS-BIOS can already *operate* the CNI-MU keypad, but an external tool had no way
+to **read back** what the avionics were showing. These string outputs parse the
+pilot CNI-MU display so a client can pull navigation data out of the aircraft and
+build a CARP solution from it:
+
+| Output | What it gives you |
+|-|-|
+| `CARP_LEGS_CRS` | Per-waypoint inbound **run-in course** from the `ACT LEGS` page, as a compact `LL01=008;LL02=012;` map. Lets a client align the CARP run-in with the actual ingress leg instead of asking you to type a heading. |
+| `CARP_LEGS_ELEV` | Per-waypoint **elevation** in feet ASL from the same page, as `LL01=1250;`. Used to auto-fill the point-of-impact / drop-zone elevation. |
+| `CARP_PROBE_A` | Diagnostic raw dump of pilot CNI indication elements 1–24, as `idx=value;` pairs (capped at 150 characters). |
+| `CARP_PROBE_B` | The same for elements 25–55. |
+
+The two `CARP_PROBE_*` outputs exist for **discovery**, not for normal use — they
+let you see which ordinal position a given CNI field currently occupies, which is
+how the parsers above were built. Expect to need them again if a cockpit mod
+update shuffles the display.
+
+`CARP_LEGS_CRS` and `CARP_LEGS_ELEV` only return data **while the `ACT LEGS` page
+is actually displayed** on the pilot CNI-MU. An empty string means the page isn't
+up, not that the export is broken.
+
+Also added alongside this work, as groundwork for automatic altimeter setting:
+the pilot baro set rotary (`PLT_BARO_SET`), the STD push (`PLT_BARO_STD`), and
+`QFE_PRESSURE` / `QFE_TEMPERATURE` / `QFE_FIELD_ELEV`.
+
+### Required `Export.lua` setup for CARP
+
+DCS-BIOS itself only needs its own line. **CARP needs a second one**, because the
+automation side runs through the DCSAutoMate export hook. For CARP to work
+properly, `...\Saved Games\DCS\Scripts\Export.lua` must contain both:
+
+```lua
+dofile(lfs.writedir() .. [[Scripts\DCS-BIOS\BIOS.lua]])
+dofile(lfs.writedir()..[[Scripts\DCSAutoMateExport.lua]])
+```
+
+Load DCS-BIOS first. The second line loads `Scripts\DCSAutoMateExport.lua`, which
+ships with the companion [DCSAutoMate fork](https://github.com/Arcanum115/DCSAutoMate) —
+copy that file into `...\Saved Games\DCS\Scripts\` next to your `Export.lua`.
+Leave any other hooks in the file alone; just append what's missing.
+
+> [!TIP]
+> If CARP sits there doing nothing, a missing second line is the first thing to
+> check.
+
+### Trying it out
+
+1. Install this release and load the C-130J-30.
+2. Point any DCS-BIOS client at the aircraft — the simplest check is to watch the
+   `CARP_LEGS_CRS` string while you bring up `ACT LEGS` on the pilot CNI-MU. It
+   should populate with one entry per waypoint and go empty when you leave the page.
+3. The companion [DCSAutoMate fork](https://github.com/Arcanum115/DCSAutoMate)
+   drives the full `CARP INIT` page sequence from these exports and draws a
+   run-in / drop-zone plan view while it does.
+
+If something parses wrongly, the useful thing to report is the `CARP_PROBE_A` and
+`CARP_PROBE_B` strings captured at the moment the page looked wrong, plus which
+CNI page was displayed. Open an issue on [this fork][issues-url].
 
 ## Usage
 
 ### Panel Builders
 
-Arduino Users should download the `Source code (zip)` on the Release page to get all needed files.
+You don't need to be a programmer or electrical engineer to build your own
+panels. The [DCS-BIOS User Guide][user-guide-url] included in this repository has
+step-by-step instructions for connecting a panel to DCS using the beginner-friendly
+[Arduino microcontroller platform](http://arduino.cc), without writing code
+yourself.
 
-You don't need to be a programmer or electrical engineer to build your own panels. The [DCS-BIOS User Guide][user-guide-url] includes step-by-step instructions on how to connect your panel to DCS using DCS-BIOS and the beginner-friendly [Arduino microcontroller platform](http://arduino.cc). You don't have to write any code yourself.
+Download `Arduino_Tools.zip` from the [latest release][latest-release-url] for the
+Arduino library, the generated `Addresses.h`, and the serial helper tools.
 
-#### Connect DCS-BIOS stream to your serial ports
+#### Connect the DCS-BIOS stream to your serial ports
 
-Both `socat` and [DCSBIOSBridge](dcsbiosbridge-url) can be used to connect to your device.
+`socat` (bundled in `Arduino_Tools.zip`) or any DCS-BIOS bridge client can connect
+the export stream to your device.
 
-> [!Important]
-> If using `socat`, the files in the .zip file must be unzipped directly in the socat folder. The path **must** be `/socat/socat.exe`
+> [!IMPORTANT]
+> If using `socat`, the files in the .zip must be unzipped directly into the socat
+> folder. The path **must** be `/socat/socat.exe`
 
 #### Debugging
 
-If you are working a lot with hardware, it may come in handy to log and replay dcs-bios data. There are two scripts in [Programs/tools](Programs/tools/) that allow you to do so.
+If you work a lot with hardware, it helps to log and replay DCS-BIOS data. Two
+scripts in [Programs/tools](Programs/tools/) do this:
 
-`python connect-logger.py` will log all dcs-bios data to `dcsbios_data.json`. Ensure that you start the logger before loading a mission in order to capture the mission-start message properly.
-
-`python replay-log.py` will ask for a serial port like `connect-serial-port.cmd` and replay the data to that com-port. When it reaches the end of the file, it will loop forever until you close it. The first message will not be repeated as this is usualy the mission-start message and should only be sent once.
-
-`dcsbios_data.json` This file contains the logged data in hex format. If you are familiar with the format of dcs-bios messages, you may modify the file by hand if needed. The included sample file is a recording of the A-10C with a blinking Master Caution light.
+- `python connect-logger.py` logs all DCS-BIOS data to `dcsbios_data.json`. Start
+  the logger **before** loading a mission so it captures the mission-start message.
+- `python replay-log.py` asks for a serial port and replays the data to it, looping
+  forever until you close it. The first message is not repeated, since that is
+  usually the mission-start message and should only be sent once.
+- `dcsbios_data.json` holds the logged data in hex. If you know the DCS-BIOS
+  message format you can hand-edit it. The included sample is an A-10C recording
+  with a blinking Master Caution light.
 
 ### Software Developers
 
-The [Developer Guide][developer-guide-url] explains how to connect to and interpret the DCS-BIOS export data stream and how to send commands to DCS-BIOS in order to operate controls inside the cockpit.
-
-There are also a variety of client libraries available, including (but not limited to):
-| Language | Library |
-|-|-|
-| C# | [DCS-BIOS Communicator](client-lib-dcs-bios-communicator-url) |
+The [Developer Guide][developer-guide-url] in this repository explains how to
+connect to and interpret the DCS-BIOS export stream, and how to send commands to
+operate cockpit controls. Client libraries exist for several languages; the
+developer guide covers the wire format if you'd rather write your own.
 
 ## Modules
 
-> [!Note]
-> Aircraft with multiple variants (e.g. A-10C/A-10C II, F-14A/B, etc.) are considered single modules.
+> [!NOTE]
+> Aircraft with multiple variants (e.g. A-10C / A-10C II, F-14A / F-14B) are
+> treated as a single module. This list reflects the modules with DCS-BIOS
+> definitions in **this** repository.
 
-Currently, DCS-BIOS supports the following aircraft modules:
+### Official DCS Modules
 
-### Official
-| Module | Status | Contributors |
-|-|-|-|
-| A-10C/A10C-II | ✅ | _FSF-Ian, WarLord_ |
-| AH-64D | ✅ | _WarLord_ |
-| AJS-37 | ✅ | _pdmarsh, WarLord, ArturDCS, Matchstick_ |
-| AV-8B N/A | ✅ | _WarLord, Matchstick_ |
-| Bf-109-K-4 | ✅ | _ArturDCS_ |
-| C-101CC/EB | ✅ | _WarLord, cdpkobra_ |
-| C-130J | ✅ | |
-| CH-47F | ✅ | |
-| Christen Eagle II | ✅ | _WarLord, cdpkobra_ |
-| F-14A/B | ✅ | _WarLord, ArturDCS, Bullitt_ |
-| F-15E | ✅ | _WarLord, Maverick87Shaka_ |
-| F-16C | ✅ | _WarLord, cdpkobra, Matchstick, BuzzKillington_ |
-| F-4E | ✅ | |
-| F-5E-3 | ✅ | _geebeer2, WarLord_ |
-| F-86F | ✅ | _ArturDCS_ |
-| F4U-1D | ✅ | |
-| F/A-18C | ✅ | _AndrewW_ |
-| Fw 190 A-8 | ✅ | _WarLord, MD44_ |
-| Fw 190 D-9 | ✅ | _ArturDCS_ |
-| I-16 | ✅ | _WarLord, NightStalker_ |
-| JF-17 | ✅ | _WarLord, cdpkobra_ |
-| Ka-50/Ka-50 3 | ✅ | _airtom, WarLord_ |
-| L-39ZA/C | ✅ | _kadda11, WarLord_ |
-| M-2000C | ✅ | _Exo7, ArturDCS, Matchstick_ |
-| MB-339 | ✅ | _WarLord_ |
-| Mi-8MTV2 | ✅ | _ArturDCS, WarLord_ |
-| Mi-24P | ✅ | _WarLord, BaD CrC_ |
-| MiG-15bis | ✅ | _WarLord, Steve Gee_ |
-| MiG-19P | ✅ | _WarLord_ |
-| MiG-21Bis | ✅ | _wraith444_ |
-| MiG-29A Fulcrum | ✅ | |
-| Mirage F1 | ✅ | _WarLord_ |
-| Mosquito FB Mk.VI | ✅ | _WarLord_ |
-| OH-58D | ✅ | |
-| P-47D | ✅ | _WarLord, Donators_ |
-| P-51D/TF-51D | ✅ | _pdmarsh_ |
-| Spitfire LF Mk. IX | ✅ | _WarLord_ |
-| SA342 | ✅ |  |
-| UH-1H | ✅ | _FSF-Ian_ |
-| Yak-52 | ✅ | _WarLord, cdpkobra_ |
-| Flaming Cliffs (all modules) | ✅ | _danvac, WarLord_ |
+| Module | Status |
+|-|-|
+| A-10C / A-10C II | ✅ |
+| AH-64D | ✅ |
+| AJS-37 | ✅ |
+| AV-8B N/A | ✅ |
+| Bf 109 K-4 | ✅ |
+| C-101CC / C-101EB | ✅ |
+| CH-47F | ✅ |
+| Christen Eagle II | ✅ |
+| F-4E | ✅ |
+| F-5E-3 | ✅ |
+| F-14A / F-14B | ✅ |
+| F-15E | ✅ |
+| F-16C | ✅ |
+| F-86F Sabre | ✅ |
+| F4U-1D | ✅ |
+| F/A-18C | ✅ |
+| Fw 190 A-8 | ✅ |
+| Fw 190 D-9 | ✅ |
+| I-16 | ✅ |
+| JF-17 | ✅ |
+| Ka-50 / Ka-50 III | ✅ |
+| L-39C / L-39ZA | ✅ |
+| M-2000C / M-2000D | ✅ |
+| MB-339A / MB-339APAN | ✅ |
+| Mi-8MTV2 | ✅ |
+| Mi-24P | ✅ |
+| MiG-15bis | ✅ |
+| MiG-19P | ✅ |
+| MiG-21Bis | ✅ |
+| MiG-29A Fulcrum | ✅ |
+| Mirage F1 (BE / CE / EE) | ✅ |
+| Mosquito FB Mk.VI | ✅ |
+| OH-58D | ✅ |
+| P-47D | ✅ |
+| P-51D / TF-51D | ✅ |
+| SA342 (L / M / Minigun / Mistral) | ✅ |
+| Spitfire LF Mk.IX | ✅ |
+| UH-1H | ✅ |
+| Yak-52 | ✅ |
+| Flaming Cliffs (all modules) | ✅ |
+| NS430 (standalone + C-101 / L-39 / Mi-8 / SA342 variants) | ✅ |
+| Supercarrier | ✅ |
 
 ### Full-Fidelity Mods
 
-| Module | Status | Contributors | Link |
-|-|-|-|-|
-| A-4E-C | ✅ | _Dehuman, WarLord_ | [GitHub](https://github.com/heclak/community-a4e-c) |
-| A-29B | ✅ | _WarLord_ | [GitHub](https://github.com/luizrenault/a-29b-community) |
-| AH-6J | ✅ | _WarLord_ | [DCS Forums](https://forum.dcs.world/topic/228394-helicopter-efm-demo) |
-| Alphajet | ✅ | _WarLord_ | [Developer](http://www.jetesons.com/telechargement.html) |
-| C-130J-30 † | 🚧 WIP | _Arcanum115_ | [Developer](https://github.com/Arcanum115) |
-| Edge-540/Extra-330SR | ✅ | _WarLord_ | [Developer](http://virtualairrace.com/downloads/) |
-| F-18E/F/G | ✅ |  | [DCS Forums](https://forum.dcs.world/topic/316971-cjs-super-hornet-community-mod-v23-official-thread/) |
-| F-22A | ✅ | _WarLord_ | [Developer](https://grinnellidesigns.com/f22) |
-| T-45 | ✅ | _WarLord_ | [DCS Forums](https://forum.dcs.world/topic/203816-vnao-t-45-goshawk/) |
+Mods with their own dedicated DCS-BIOS control definitions:
 
-> [!Note]
-> † **C-130J-30:** Added in this fork ([Arcanum115](https://github.com/Arcanum115)). Working but still WIP.
-> The Lua module was developed with assistance from Anthropic's Claude AI;
-> see the fork-notice callout at the top of this README for details.
+| Module | Status | Link |
+|-|-|-|
+| A-4E-C | ✅ | [GitHub](https://github.com/heclak/community-a4e-c) |
+| A-29B | ✅ | [GitHub](https://github.com/luizrenault/a-29b-community) |
+| AH-6J | ✅ | [DCS Forums](https://forum.dcs.world/topic/228394-helicopter-efm-demo) |
+| Alphajet | ✅ | |
+| **C-130J-30** † | 🚧 WIP | [Developer](https://github.com/Arcanum115) |
+| Edge 540 / Extra 330SR | ✅ | [Developer](http://virtualairrace.com/downloads/) |
+| F-22A | ✅ | |
+| MH-60R | ✅ | |
+| T-45 Goshawk | ✅ | [DCS Forums](https://forum.dcs.world/topic/203816-vnao-t-45-goshawk/) |
+
+> [!NOTE]
+> † **C-130J-30:** the focus of this fork. Working but still WIP; the CARP exports
+> are [beta](#c-130j-carp-testing-beta). The Lua module was developed with
+> assistance from Anthropic's Claude AI — see the fork notice at the top.
+
+Additionally recognised for export (common data works, no dedicated control set):
+Bell 47G, UH-60L / Black Hawk, EA-18G, F/A-18E / F/A-18F, F-16D and F-16I variants,
+VNAO Ready Room.
 
 ### Flaming Cliffs Mods
+
 - AC-130
 - Civil Aircraft mod
 - MIG-23UB Project
@@ -240,86 +396,56 @@ Currently, DCS-BIOS supports the following aircraft modules:
 - Virtual Cockpits
 - VSN-Mods
 
-
 ### Adding a Mod
 
 DCS-BIOS supports many community mods out-of-the-box.
 
-In order to a Flaming-Cliffs-based mod which is not supported by DCS-BIOS, add the following to the bottom of `DCS-BIOS/lib/AircraftList.lua`:
+To add a Flaming-Cliffs-based mod that isn't supported yet, add the following to
+the bottom of `DCS-BIOS/lib/AircraftList.lua`:
 
 ```lua
 add("PlaneName", false)
 ```
-> [!Tip]
-> To get the correct plane name, open the DCS-BIOS Reference Tool (`MetadataStart`) while you fly that plane and look what value `_ACFT_NAME` has.
 
-> [!Important]
-> Please consider submitting a pull request to add support for the module to DCS-BIOS for all users!
-
+> [!TIP]
+> To get the correct plane name, open the DCS-BIOS Reference Tool (`MetadataStart`)
+> while flying that plane and see what value `_ACFT_NAME` has.
 
 ## Contributing
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+Fork-specific contributions — C-130J-30 controls, CARP work, documentation — are
+welcome here. Please [open an issue][issues-url] or a pull request, and see
+[CONTRIBUTING.md](CONTRIBUTING.md) first.
 
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You may also simply [open an issue][issues-url].
-
-Please see [Contributing.md][contributing-url] for more information.
-
-> [!Important]
-> If you plan on submitting a pull request, **please** read the Contributing Guide first.
+> [!IMPORTANT]
+> Improvements that aren't specific to the C-130J-30 belong upstream, where they
+> benefit everyone — see the upstream credit note at the top of this README.
 
 ## License
 
-Distributed under the `GPL 3.0` license. See [LICENSE][license-url] for more information.
+Distributed under the `GPL 3.0` license. See [LICENSE](LICENSE) for the full text
+and the copyright notices of the original authors.
 
-The [original DCS-BIOS][original-dcs-bios-url] was created by [FSF]Ian under the `SimPL 2.0` license.
-
-The copy of `socat` that comes with DCS-BIOS is licensed under `GPL 2.0` (see [Programs/socat/COPYING](Programs/socat/COPYING)).
-
-## Contact
-
-For questions, consider asking in our [Discussions][discussions-url] page, or reach out to us on [Discord][discord-url].
+The copy of `socat` that ships with DCS-BIOS is licensed under `GPL 2.0` (see
+[Programs/socat/COPYING](Programs/socat/COPYING)).
 
 ## Acknowledgments
 
-- [Original DCS-BIOS][original-dcs-bios-url]
 - [Best-README-Template](https://github.com/othneildrew/Best-README-Template)
 - [luacheck](https://github.com/lunarmodules/luacheck)
 - [LuaUnit](https://github.com/bluebird75/luaunit)
 - [StyLua](https://github.com/JohnnyMorganz/StyLua)
 - [lua-language-server](https://github.com/LuaLS/lua-language-server)
 
-## Related Projects
-
-- [Arduino Library](https://github.com/DCS-Skunkworks/dcs-bios-arduino-library)
-- [Arduino Examples](https://github.com/DCS-Skunkworks/dcs-bios-arduino_examples)
-- [Bort DCS-BIOS Reference Tool](https://github.com/DCS-Skunkworks/bort)
-- [BIOSBuddy DCS-BIOS Reference Tool](https://github.com/DCS-Skunkworks/biosbuddy)
-- [DCS-BIOS Bridge](https://github.com/DCS-Skunkworks/dcsbiosbridge)
-
-
-[contributors-shield]: https://img.shields.io/github/contributors/DCS-Skunkworks/dcs-bios.svg?style=for-the-badge
-[contributors-url]: https://github.com/DCS-Skunkworks/dcs-bios/graphs/contributors
-[issues-shield]: https://img.shields.io/github/issues/DCS-Skunkworks/dcs-bios.svg?style=for-the-badge
-[issues-url]: https://github.com/DCS-Skunkworks/dcs-bios/issues
-[license-shield]: https://img.shields.io/github/license/DCS-Skunkworks/dcs-bios.svg?style=for-the-badge
-[license-url]: https://github.com/DCS-Skunkworks/dcs-bios/blob/main/LICENSE
-[release-shield]: https://img.shields.io/github/release/DCS-Skunkworks/dcs-bios.svg?style=for-the-badge
-[release-url]: https://github.com/DCS-Skunkworks/dcs-bios/releases
-[opencollective-shield]: https://img.shields.io/opencollective/sponsors/dcs-skunkworks?style=for-the-badge
-[opencollective-url]: https://opencollective.com/dcs-skunkworks
-[discord-shield]: https://img.shields.io/discord/533342958712258572?style=for-the-badge
-[discord-url]: https://discord.gg/5svGwKX
-[downloads-shield]: https://img.shields.io/github/downloads/DCS-Skunkworks/dcs-bios/total?style=for-the-badge
+[release-shield]: https://img.shields.io/github/v/release/Arcanum115/dcs-bios?style=for-the-badge
+[release-url]: https://github.com/Arcanum115/dcs-bios/releases/latest
+[downloads-shield]: https://img.shields.io/github/downloads/Arcanum115/dcs-bios/total?style=for-the-badge
+[issues-shield]: https://img.shields.io/github/issues/Arcanum115/dcs-bios.svg?style=for-the-badge
+[issues-url]: https://github.com/Arcanum115/dcs-bios/issues
+[license-shield]: https://img.shields.io/github/license/Arcanum115/dcs-bios.svg?style=for-the-badge
+[license-url]: LICENSE
 
 [dcs-url]: http://www.digitalcombatsimulator.com
-[original-dcs-bios-url]: https://github.com/dcs-bios/dcs-bios
-[latest-release-url]: https://github.com/DCS-Skunkworks/dcs-bios/releases/latest
-[wiki-url]: https://github.com/DCS-Skunkworks/dcs-bios/wiki/
-[discussions-url]: https://github.com/DCS-Skunkworks/dcs-bios/discussions/
-[user-guide-url]: https://github.com/DCS-Skunkworks/dcs-bios/blob/main/Scripts/DCS-BIOS/doc/userguide.adoc
-[dcsbiosbridge-url]: https://github.com/DCS-Skunkworks/DCSBIOSBridge/releases
-[developer-guide-url]: https://github.com/DCS-Skunkworks/dcs-bios/blob/main/Scripts/DCS-BIOS/doc/developerguide.adoc
-[contributing-url]: https://github.com/DCS-Skunkworks/dcs-bios/blob/main/CONTRIBUTING.md
-
-[client-lib-dcs-bios-communicator-url]: https://github.com/charliefoxtwo/DCS-BIOS-Communicator
+[latest-release-url]: https://github.com/Arcanum115/dcs-bios/releases/latest
+[user-guide-url]: Scripts/DCS-BIOS/doc/userguide.adoc
+[developer-guide-url]: Scripts/DCS-BIOS/doc/developerguide.adoc

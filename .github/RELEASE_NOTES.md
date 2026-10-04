@@ -82,6 +82,24 @@ adding it only if it is missing:
 dofile(lfs.writedir() .. [[Scripts\DCS-BIOS\BIOS.lua]])
 ```
 
+That one line is all DCS-BIOS itself needs.
+
+### Using the C-130J CARP automation? You need a second line
+
+DCS-BIOS drives the cockpit, but the CARP airdrop automation also runs through the
+DCSAutoMate export hook. For CARP to work properly, `Export.lua` must contain
+**both** lines, DCS-BIOS first:
+
+```lua
+dofile(lfs.writedir() .. [[Scripts\DCS-BIOS\BIOS.lua]])
+dofile(lfs.writedir()..[[Scripts\DCSAutoMateExport.lua]])
+```
+
+`DCSAutoMateExport.lua` ships with the companion
+[DCSAutoMate fork](https://github.com/Arcanum115/DCSAutoMate); copy it into
+`...\Saved Games\DCS\Scripts\` next to your `Export.lua`. If CARP sits there doing
+nothing, a missing second line is the first thing to check.
+
 ## Assets
 
 | File | Contents |
