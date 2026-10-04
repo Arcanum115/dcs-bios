@@ -44,7 +44,7 @@ jobs:
     steps:
       - name: Set release filename
         id: filename
-        run: echo "zip=DCS-BIOS_${{ github.ref_name }}.zip" >> $GITHUB_OUTPUT
+        run: echo "zip=DCS-BIOS.zip" >> $GITHUB_OUTPUT
 
       - name: Checkout repository
         uses: actions/checkout@v4

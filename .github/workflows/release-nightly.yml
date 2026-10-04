@@ -52,7 +52,7 @@ jobs:
 
       - name: Set release filename
         id: filename
-        run: echo "zip=DCS-BIOS_nightly_${{ steps.date.outputs.date }}.zip" >> $GITHUB_OUTPUT
+        run: echo "zip=DCS-BIOS.zip" >> $GITHUB_OUTPUT
 
       - name: Checkout repository
         uses: actions/checkout@v4
