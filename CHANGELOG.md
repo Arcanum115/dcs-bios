@@ -13,7 +13,10 @@ DCS-BIOS regenerates `doc/json/*.json` on module load, so no manual JSON regen
 is needed. Copy the modified `C-130J.lua` into
 `%USERPROFILE%\Saved Games\DCS\Scripts\DCS-BIOS\lib\modules\aircraft_modules\`.
 
-## [2026-10-03] — Upstream merge & ATCS/PROP_SYNC fix
+## [v0.11.4] — 2026-10-03 — Upstream merge & ATCS/PROP_SYNC fix
+
+Released as **v0.11.4** (`BIOSConfig.version = "0.11.4"`); pairs with
+DCSAutoMate's CARP plan-view / C-130J CARP script update.
 
 Merged upstream DCS-Skunkworks/dcs-bios, whose new official C-130J module
 (#1791) replaced this fork's base copy; all Arcanum115 additions were
